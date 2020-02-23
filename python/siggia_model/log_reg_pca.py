@@ -6,15 +6,14 @@ import matplotlib
 from matplotlib import colors
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-
-
 from sklearn.linear_model import LogisticRegression as logreg
 
 from numpy import linalg as linalg
 
 # directories
-datdir  = '/Users/simonfreedman/cqub/xenopus/data'
-plotdir = '/Users/simonfreedman/cqub/xenopus/plots'
+topdir  = '/home/slf3348'
+datdir  = '{0}/xenopus/data'.format(topdir)
+plotdir = '{0}/xenopus/plots'.format(topdir)
 
 stagestrs = ['9','10','10.5','11','12','13']
 

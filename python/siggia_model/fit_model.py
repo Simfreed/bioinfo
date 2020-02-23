@@ -13,13 +13,74 @@ import corner
 
 import time
 
+import argparse 
+
+from multiprocessing import Pool
+from multiprocessing import cpu_count
+
+import os
+
+# possibly important for parallelization
+os.environ["OMP_NUM_THREADS"] = "1"
+
+# this should force matplotlib to not require a display
+matplotlib.use('Agg')
+
+parser = argparse.ArgumentParser()
+
+#parser.add_argument("directory",     type=str,   help="output directory")
+parser.add_argument("--niter",        type=int,   help="number of iterations for dual_annealing", default=10)
+parser.add_argument("--nwalkers",     type=int,   help="mcmc nwalkers",    default=32)
+parser.add_argument("--chain_len",    type=int,   help="mcmc len",    default=100)
+parser.add_argument("--thin",         type=int,   help="output chain every k timesteps",    default=1)
+parser.add_argument("--seed",         type=int,   help="the seed of course",    default=0)
+parser.add_argument("--showProgress", type=bool,  help="show mcmc progress",    default=False)
+
+args = parser.parse_args()
 
 # directories
-datdir  = '/Users/simonfreedman/cqub/xenopus/data'
-plotdir = '/Users/simonfreedman/cqub/xenopus/plots'
+topdir  = '/home/slf3348'
+datdir  = '{0}/xenopus/data'.format(topdir)
+plotdir = '{0}/xenopus/plots'.format(topdir)
 
 sqrt3over3 = np.sqrt(3) / 3.
 
+# likelihood function settings
+nper = 100
+nt   = 100
+dt   = 1
+tau  = 10
+
+# prior priors
+ndim = 13 # number of parameters to fit
+mag_sigma = 5
+mag_sigma2 = mag_sigma**2
+dff_scale  = 1
+maxr0      = 5
+
+# model input
+ncond  = 3 
+nstg   = 6
+nrep   = 3
+
+seed      = args.seed 
+niter     = args.niter
+nwalkers  = args.nwalkers
+chain_len = args.chain_len
+
+initGaus       = np.array([0,10,5]) #0*e-((x-10)^2)/5^2
+initPos        = np.array([0,0])
+initDiff       = np.array([0.0001])
+initLogErrFrac = np.array([-1])
+
+tbounds      = [0,nt]
+magbounds    = [-100,100] 
+posbounds    = [-2,2]
+dffbounds    = [0,10]
+logerrbounds = [-10, 1]
+
+
+print("initializing functions")
 # HERE BEGINS FUNCTIONS
 def f(r):
     return 2*r + np.vstack([-2*r[:,0]*r[:,1] , r[:,1]**2 - r[:,0]**2]).T
@@ -49,13 +110,13 @@ def getBasins(rs):
 # calculate fixed points
 r0s = np.array([[[0, 0.1]], [[0.1, -0.1]], [[-0.1, -0.1]]]);
 dt = 1;
-nt = 10000;
+ntfp = 10000;
 fpsL = []
 tau = 100
 
 for r0 in r0s:
     r = r0
-    for t in range(nt):
+    for t in range(ntfp):
         r += dt * rdot0(r, tau)
     fpsL.append(r)
 fps = np.array(fpsL)[:,0]
@@ -97,26 +158,23 @@ def finalpos(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, noises, n
     
     for t in range(nt):
         r += dt*rdot(r, noises[t], tau, l0s[t], l1s[t], l2s[t])
+    
     #return r.reshape(-1)
     return getBasins(r) #.reshape(-1)
 
 def finalposD(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, dff, nt, dt, tau, seed=None):
+    
     np.random.seed(seed)
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts0.shape[1],2))
     return finalpos(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, noises, nt, dt, tau)
 
 def getBasinProbabilities(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, 
                           dff, nt, dt, tau, ensembleSize = 100, seed=None):
+    
     finalPoss  = finalposD(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, dff, nt, dt, tau, seed)
     finalPossS = np.array(np.split(finalPoss, range(nper, finalPoss.shape[0], nper)))
     return np.mean(finalPossS, axis=1)#.reshape(-1)
 
-# likelihood function
-nper = 100
-nt   = 100
-dt   = 1
-tau  = 10
-seed = 42
 def basinProbFittingFunc(sts, a0, a1, a2, b0, b1, b2, c0, c1, c2, x0, y0, dff):
     return getBasinProbabilities(np.repeat(sts[0:6],   nper, axis=1), 
                                  np.repeat(sts[6:12],  nper, axis=1),
@@ -137,10 +195,6 @@ def log_likelihood(theta, x, y, yerr):
     sigma2 = yerr ** 2 + model ** 2 * np.exp(2 * log_f)
     return -0.5 * np.sum((y - model) ** 2 / sigma2 + np.log(sigma2))  # not sure what to use as yerr
 
-mag_sigma2 = 25
-dff_scale  = 1
-maxr0      = 5
-
 def log_prior(theta):
     a0, a1, a2, b0, b1, b2, c0, c1, c2, x0, y0, dff, log_f = theta
 
@@ -153,6 +207,19 @@ def log_prior(theta):
     
     return np.sum(-magvars**2/mag_sigma2) - dff / dff_scale
 
+def random_parameter_set(iseed = seed):
+    np.random.seed(iseed)
+    
+    a0,b0,c0          = np.random.normal(loc=0, scale = mag_sigma, size = 3)
+    
+    a1,a2,b1,b2,c1,c2 = np.random.uniform(low=0,high=nt,size=6)
+    x0,y0             = np.random.uniform(low=-2, high=2, size=2)
+    log_f             = np.random.uniform(-10,1)
+    
+    dff               = np.random.exponential(scale = dff_scale)
+    
+    return np.array([a0,a1,a2,b0,b1,b2,c0,c1,c2,x0,y0,dff,log_f])
+
 def log_probability(theta, x, y, yerr):
     
     lp = log_prior(theta)
@@ -164,17 +231,12 @@ def log_probability(theta, x, y, yerr):
 
 nll = lambda *args: -log_likelihood(*args)
 
-
+print("loading log reg output")
 # model output: 
-preds  = np.load('{0}/log_reg_pca_preds.npy'.format(datdir))
+preds   = np.load('{0}/log_reg_pca_preds.npy'.format(datdir))
 predss  = np.load('{0}/log_reg_pca_predss.npy'.format(datdir))
 # arranged as c0_rep0_t0, c0_rep0_t1, c0_rep0_t2...c0_rep1_t0, c0_rep1_t1,...,c0_rep2_t5,c1_rep0_t0,...,c2_rep2_t5
 
-# model input
-ncond  = 3 
-nstg   = 6
-nrep   = 3
-nper   = 100
 
 exps = np.zeros((preds.shape[0],ncond*nstg))
 idx  = 0
@@ -197,49 +259,56 @@ for i in np.arange(ncond):
         expsMu[idx, i*nstg:(i*nstg+t+1)]=1
         idx += 1
 
-initGaus       = np.array([0,10,5]) #0*e-((x-10)^2)/5^2
-initPos        = np.array([0,0])
-initDiff       = np.array([0.0001])
-initLogErrFrac = np.array([-1])
+# REMOVING THIS ANNEALING STEP BECAUSE CHARLIE SAID IT WAS STUPID
+# LOCKS YOU INTO A SPECIFIC WELL OF A ROCKY LANDSCAPE
+#idxs     = np.array([5,11,17]) # annealing takes a while, so we're trying to maximize likelihood wrt only the easiest datapoints
+#xs       = expsMu[idxs].T
+#ys       = predssMu[idxs,0:2]
+#yerrs    = yerrMu[idxs,0:2]
+#
+#
+#print('before fitting\n')
+#print( basinProbFittingFunc(xs, *initial[0:-1]), nll(initial, xs, ys, yerrs) )
+#start = time.time()
+#soln    = dual_annealing(nll, x0=initial, args=(xs, ys, yerrs), bounds = [magbounds, tbounds, tbounds,
+#                                                                          magbounds, tbounds, tbounds,
+#                                                                          magbounds, tbounds, tbounds,
+#                                                                          posbounds, posbounds,
+#                                                                          dffbounds, logerrbounds], maxiter = niter)
+#end = time.time()
+#elapsed = end - start
+#
+#print('{0} iterations took {1} seconds\n'.format(niter, elapsed))
+#print(basinProbFittingFunc(xs, *soln.x[0:-1]),soln)
+#
+#np.save('{0}/dual_annealing_fit_{1}iter.npy'.format(datdir, niter),soln.x)
+#pos      = soln.x + np.abs(1e-4 * np.random.randn(nwalkers, ndim))
 
-tbounds      = [0,nt]
-magbounds    = [-100,100] 
-posbounds    = [-2,2]
-dffbounds    = [0,10]
-logerrbounds = [-10, 1]
+print('\nhammer time')
+idxs     = np.arange(18) # sample wrt to all data points
+xs       = expsMu[idxs].T
+ys       = predssMu[idxs,0:2]
+yerrs    = yerrMu[idxs,0:2]
 
-idxs = np.arange(18)
+pos      = np.array([random_parameter_set() for i in range(nwalkers)])
 
-xs    = expsMu[idxs].T
-ys    = predssMu[idxs,0:2]
-yerrs = yerrMu[idxs,0:2]
+pos      = random_parameter_set() + np.abs(1e-4*np.random.randn(nwalkers, ndim))
+#print((pos,pos.shape))
 
-initial = np.array(np.hstack([initGaus, initGaus, initGaus, initPos, initDiff, initLogErrFrac])) #+ np.random.randn(13)
-niter = 50
-print('before fitting\n')
-print( basinProbFittingFunc(xs, *initial[0:-1]), nll(initial, xs, ys, yerrs) )
+#initial  = np.array(np.hstack([initGaus, initGaus, initGaus, initPos, initDiff, initLogErrFrac])) + np.random.randn(13)
+#print((initial,initial.shape))
+
 start = time.time()
-soln    = dual_annealing(nll, x0=initial, args=(xs, ys, yerrs), bounds = [magbounds, tbounds, tbounds,
-                                                                          magbounds, tbounds, tbounds,
-                                                                          magbounds, tbounds, tbounds,
-                                                                          posbounds, posbounds,
-                                                                          dffbounds, logerrbounds], maxiter = niter)
+with Pool() as pool:
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(xs, ys, yerrs), pool=pool)
+    sampler.run_mcmc(pos, chain_len, progress=args.showProgress);
 end = time.time()
 elapsed = end - start
+ncpu = cpu_count()
+print('\nsampling with {0} walkers for {1} steps with {2} cpus took {3} seconds (niter = {4})\n'.format(nwalkers, chain_len, ncpu, elapsed, niter))
 
-print('{0} iterations took {1} seconds\n'.format(niter, elapsed))
-print(basinProbFittingFunc(xs, *soln.x[0:-1]),soln)
-
-nwalkers  = 32
-chain_len = 500
-ndim     = len(initial)
-pos      = soln.x + np.abs(1e-4 * np.random.randn(nwalkers, ndim))
-
-sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(xs, ys, yerrs))
-sampler.run_mcmc(pos, chain_len, progress=True);
-
-samples = sampler.get_chain()
-np.save('{0}/mcmc_samples.npy'.format(datdir),samples)
+samples = sampler.get_chain(thin=args.thin)
+np.save('{0}/mcmc_samples_nw{1}_cl{2}_annealN{3}.npy'.format(datdir, nwalkers, chain_len, niter),samples)
 
 fig, axes = plt.subplots(ndim, figsize=(10, 20), sharex=True)
 
@@ -252,15 +321,18 @@ for i in range(ndim):
     #ax.yaxis.set_label_coords(-0.1, 0.5)
 
 axes[-1].set_xlabel("step number");
-plt.savefig('{0}/mcmc_parameter_chains.jpg'.format(plotdir),bbox_inches="tight")
+plt.savefig('{0}/mcmc_parameter_chains_nw{1}_cl{2}_annealN{3}.png'.format(plotdir, nwalkers, chain_len, niter),bbox_inches="tight")
 
 flat_samples = sampler.get_chain(discard=50, thin=15, flat=True)
 myguess = np.array([100,0,10,100,0,10,100,0,10,0,0,0.0001,-1])
 fig = corner.corner(
     flat_samples, labels=labels, truths=myguess#[m_true, b_true, np.log(f_true)]
 );
-plt.savefig('{0}/mcmc_corner_plot.jpg'.format(plotdir),bbox_inches="tight")
+plt.savefig('{0}/mcmc_corner_plot_nw{1}_cl{2}_annealN{3}.png'.format(plotdir, nwalkers, chain_len, niter),bbox_inches="tight")
 
-tau = sampler.get_autocorr_time()
-print(tau)
+try:
+    tau = sampler.get_autocorr_time()
+    print(tau)
+except emcee.autocorr.AutocorrError:
+    print('not enough data to compute autocorr')
 
