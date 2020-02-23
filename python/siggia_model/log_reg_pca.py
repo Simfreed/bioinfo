@@ -3,12 +3,15 @@ import scipy as sc
 import myfun as mf
 
 import matplotlib
+matplotlib.use('Agg')
+
 from matplotlib import colors
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from sklearn.linear_model import LogisticRegression as logreg
 
 from numpy import linalg as linalg
+
 
 # directories
 topdir  = '/home/slf3348'
@@ -42,12 +45,14 @@ predsS = np.array(np.split(
              ,3) # split into each group of 3 replicates, such that
                   # 0th==> trajectory, 1th==> rep, 2th==>stage, 3th==>probability of condition
 )
-predss = predsS.transpose((3,0,1,2))
+#predss = predsS.transpose((3,0,1,2))
 
 np.save('{0}/log_reg_pca_preds.npy'.format(datdir), preds)
-np.save('{0}/log_reg_pca_predss.npy'.format(datdir), predss)
-np.save('{0}/log_reg_pca_predsS.npy'.format(datdir), predsS)
+#np.save('{0}/log_reg_pca_predss.npy'.format(datdir), predss)
+np.save('{0}/log_reg_pca_predss.npy'.format(datdir), predsS)
 np.savetxt('{0}/log_reg_pca_preds.tsv'.format(datdir), preds)
+
+print('saved data')
 # now its 0th => p(cond), 1th=>trajectory, 2th=>rep, 3th=>stage
 
 ########################

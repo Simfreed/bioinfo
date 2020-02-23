@@ -6,6 +6,8 @@ from scipy.optimize import minimize, basinhopping, dual_annealing
 from numpy import linalg as linalg
 
 import matplotlib
+matplotlib.use('Agg')
+
 from matplotlib import colors
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
@@ -24,7 +26,6 @@ import os
 os.environ["OMP_NUM_THREADS"] = "1"
 
 # this should force matplotlib to not require a display
-matplotlib.use('Agg')
 
 parser = argparse.ArgumentParser()
 
@@ -60,11 +61,12 @@ dt   = 1
 tau  = 10
 
 # prior priors
-ndim = 13 # number of parameters to fit
+ndim = 9 # number of parameters to fit
 mag_sigma = 5
 mag_sigma2 = mag_sigma**2
-dff_scale  = 1
-maxr0      = 5
+dff_scale  = 0.01
+maxx = 2
+maxr0 = maxx**2
 
 # model input
 ncond  = 3 
@@ -134,6 +136,15 @@ fps = np.array(fpsL)[:,0]
 def rdot2(r, noise, tau, l0, l1):
     return 1/tau * (sigma1(f(r) + np.outer(l0,fps[0]) + np.outer(l1,fps[2])) - r) + noise
 
+def getSigSeriesG(sts, nt, a, mu, sig):
+
+    # sts has shape T x M
+    # the rest are numbers
+    gaus        = a*np.exp(-(np.arange(nt)-mu)**2/sig**2)
+    nper        = np.int(nt/sts.shape[0])
+    stsRepeated = np.vstack([np.repeat(sts,nper,axis=0),np.zeros((nt-nper*6,sts.shape[1]))])
+    return (stsRepeated.T*gaus).T
+
 def fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, npts=6):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
@@ -191,10 +202,11 @@ def log_prior(theta):
 def random_parameter_set(iseed = seed):
     np.random.seed(iseed)
     
-    a0,b0       = np.random.normal(loc=0, scale = mag_sigma, size = 3)
+    a0,b0       = np.random.normal(loc=0, scale = mag_sigma, size = 2)
     
-    a1,a2,b1,b2 = np.random.uniform(low=0,high=nt,size=6)
-    x0,y0       = np.random.uniform(low=-2, high=2, size=2)
+    a1,a2,b1,b2 = np.random.uniform(low=0,high=nt,size=4)
+    #x0,y0       = np.random.uniform(low=-maxx, high=maxx, size=2)
+    x0,y0       = np.random.normal(loc = 0 , scale = maxx/10, size=2)
     dff         = np.random.exponential(scale = dff_scale)
     
     return np.array([a0,a1,a2,b0,b1,b2,x0,y0,dff])
@@ -219,7 +231,7 @@ logfile.write("\nloading log reg output")
 #yerr = 0.02 + 0.02 * np.random.rand(*preds.shape) # completely made up!
 #predss  = np.load('{0}/log_reg_pca_predss.npy'.format(datdir))
 
-predsS  = np.load('{0}/log_reg_pca_predsS.npy'.format(datdir))
+predsS  = np.load('{0}/log_reg_pca_predss.npy'.format(datdir))
 
 y    = np.mean(predsS,axis=1)[:,:,:2]
 yerr = np.std(predsS,axis = 1)[:,:,:2]
@@ -250,14 +262,14 @@ with Pool() as pool:
 end     = time.time()
 elapsed = end - start
 
-logfile.write('\nsampling with {0} walkers for {1} steps took {3} seconds (niter = {4})\n'.format(nwalkers, chain_len, elapsed, niter))
+logfile.write('\nsampling with {0} walkers for {1} steps took {2} seconds (niter = {3})\n'.format(nwalkers, chain_len, elapsed, niter))
 
 samples = sampler.get_chain(thin=args.thin)
 np.save('{0}/samples.npy'.format(outdir),samples)
 
 fig, axes = plt.subplots(ndim, figsize=(10, 20), sharex=True)
 
-labels = ["a0", "a1","a2","b0","b1","b2","c0","c1","c2","x0","y0","Diff","log_f"]
+labels = ["a0", "a1","a2","b0","b1","b2","x0","y0","Diff"]
 for i in range(ndim):
     ax = axes[i]
     ax.plot(samples[:, :, i], "k", alpha=0.3)
