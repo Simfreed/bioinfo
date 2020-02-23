@@ -28,7 +28,7 @@ matplotlib.use('Agg')
 
 parser = argparse.ArgumentParser()
 
-#parser.add_argument("directory",     type=str,   help="output directory")
+parser.add_argument("--dir",          type=str,   help="output subdirectory", default='mcmc{0}'.format(time.strftime('%m-%d-%y_%H:%M')))
 parser.add_argument("--niter",        type=int,   help="number of iterations for dual_annealing", default=10)
 parser.add_argument("--nwalkers",     type=int,   help="mcmc nwalkers",    default=32)
 parser.add_argument("--chain_len",    type=int,   help="mcmc len",    default=100)
@@ -41,7 +41,15 @@ args = parser.parse_args()
 # directories
 topdir  = '/home/slf3348'
 datdir  = '{0}/xenopus/data'.format(topdir)
-plotdir = '{0}/xenopus/plots'.format(topdir)
+outdir  = '{0}/{1}'.format(datdir,args.dir)
+os.makedirs(outdir, exist_ok = True)
+
+# record args
+f = open("{0}/args.txt".format(outdir),"w")
+f.write( str(args) )
+f.close()
+
+logfile = open("{0}/log.txt".format(outdir), "w")
 
 sqrt3over3 = np.sqrt(3) / 3.
 
@@ -80,7 +88,7 @@ dffbounds    = [0,10]
 logerrbounds = [-10, 1]
 
 
-print("initializing functions")
+logfile.write("initializing functions")
 # HERE BEGINS FUNCTIONS
 def f(r):
     return 2*r + np.vstack([-2*r[:,0]*r[:,1] , r[:,1]**2 - r[:,0]**2]).T
@@ -123,24 +131,10 @@ fps = np.array(fpsL)[:,0]
 ##############################################################
 ##############################################################
 
-def rdot(r, noise, tau, l0, l1, l2):
-    return 1/tau * (sigma1(f(r) + np.outer(l0,fps[0]) + np.outer(l1,fps[1]) 
-                           + np.outer(l2,fps[2])) - r) + noise
+def rdot2(r, noise, tau, l0, l1):
+    return 1/tau * (sigma1(f(r) + np.outer(l0,fps[0]) + np.outer(l1,fps[2])) - r) + noise
 
-def norm0to1(x):
-    minx = np.amin(x)
-    return (x - minx)/(np.max(x) - minx)
-
-def getSigSeriesG(sts, nt, a, mu, sig):
-    
-    # sts has shape T x M
-    # the rest are numbers
-    gaus        = a*np.exp(-(np.arange(nt)-mu)**2/sig**2)
-    nper        = np.int(nt/sts.shape[0])
-    stsRepeated = np.vstack([np.repeat(sts,nper,axis=0),np.zeros((nt-nper*6,sts.shape[1]))])
-    return (stsRepeated.T*gaus).T
-    
-def finalpos(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, noises, nt, dt, tau):
+def fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, npts=6):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
     # sigParams = parameters for getSigSeries function
@@ -152,73 +146,58 @@ def finalpos(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, noises, n
     
     l0s = getSigSeriesG(sts0, nt, *sigParams0)
     l1s = getSigSeriesG(sts1, nt, *sigParams1) # nt x M
-    l2s = getSigSeriesG(sts2, nt, *sigParams2) # nt x M
     
-    r   = r0 * np.ones((sts0.shape[1], r0.shape[0])) # M x 2 -- assumes r0 is same for all inputs
+    #r   = r0 * np.ones((sts0.shape[1], r0.shape[0])) # M x 2 -- assumes r0 is same for all inputs
+    rs  = np.zeros((sts0.shape[1], nt, r0.shape[0])) # M x nt x 2
+    rs[:,0] = r0
+    for t in range(0, nt-1):
+        rs[:,t+1] = rs[:,t] + dt*rdot2(rs[:,t], noises[t], tau, l0s[t], l1s[t])
     
-    for t in range(nt):
-        r += dt*rdot(r, noises[t], tau, l0s[t], l1s[t], l2s[t])
-    
-    #return r.reshape(-1)
-    return getBasins(r) #.reshape(-1)
+    tidxs = np.array(np.around(np.linspace(0,nt-1,npts)), dtype='int')
+    return np.array([getBasins(rs[:,t]) for t in tidxs]) # should vectorize getBasins...
 
-def finalposD(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, dff, nt, dt, tau, seed=None):
-    
+def fullTrajD(sts0, sts1, sigParams0, sigParams1, r0, dff, nt, dt, tau, seed=None, npts=6):
     np.random.seed(seed)
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts0.shape[1],2))
-    return finalpos(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, noises, nt, dt, tau)
+    return fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, npts)
 
-def getBasinProbabilities(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, 
-                          dff, nt, dt, tau, ensembleSize = 100, seed=None):
-    
-    finalPoss  = finalposD(sts0, sts1, sts2, sigParams0, sigParams1, sigParams2, r0, dff, nt, dt, tau, seed)
-    finalPossS = np.array(np.split(finalPoss, range(nper, finalPoss.shape[0], nper)))
-    return np.mean(finalPossS, axis=1)#.reshape(-1)
+def getTrajBasinProbabilities(sts, sigParams0, sigParams1, r0, dff, nt, dt, tau, 
+                              nper = 100, seed=None, npts=6):
+    trajBasins  = fullTrajD(np.repeat(sts[0:6], nper, axis=1), 
+                            np.repeat(sts[6:12], nper, axis=1), 
+                            sigParams0, sigParams1, r0, dff, nt, dt, tau, seed, npts)
+    trajBasinsS = np.array(np.split(trajBasins, range(nper, trajBasins.shape[1], nper), axis=1))
+    return np.mean(trajBasinsS, axis=2)#.reshape(-1)
 
-def basinProbFittingFunc(sts, a0, a1, a2, b0, b1, b2, c0, c1, c2, x0, y0, dff):
-    return getBasinProbabilities(np.repeat(sts[0:6],   nper, axis=1), 
-                                 np.repeat(sts[6:12],  nper, axis=1),
-                                 np.repeat(sts[12:18], nper, axis=1),
-                                 [a0, a1, a2], [b0, b1, b2], [c0, c1, c2], 
-                                 np.array([x0, y0]), dff, 
-                                 nt, dt, tau, nper, seed)[:,0:2] 
-    #probably only need to fit two values because probabilities are bounded
-
-# designed in accordance with emcee's curve fitting tutorial: 
-# https://emcee.readthedocs.io/en/stable/tutorials/line/
-# variance is underestimated by some fractional amount f
 def log_likelihood(theta, x, y, yerr):
     #a0, a1, log_f = theta
-    a0, a1, a2, b0, b1, b2, c0, c1, c2, x0, y0, dff, log_f = theta
+    a0, a1, a2, b0, b1, b2, x0, y0, dff = theta
 
-    model  = basinProbFittingFunc(x, a0, a1, a2, b0, b1, b2, c0, c1, c2, x0, y0, dff)    
-    sigma2 = yerr ** 2 + model ** 2 * np.exp(2 * log_f)
-    return -0.5 * np.sum((y - model) ** 2 / sigma2 + np.log(sigma2))  # not sure what to use as yerr
+    model  = getTrajBasinProbabilities(x, [a0, a1, a2], [b0, b1, b2], np.array([x0, y0]), dff, nt, dt, tau, nper)[:,:,:2]
+    sigma2 = yerr ** 2 #+ model ** 2 * np.exp(2 * log_f)
+    return -0.5 * np.sum((y - model) ** 2 / sigma2 ) #+ np.log(sigma2))
 
 def log_prior(theta):
-    a0, a1, a2, b0, b1, b2, c0, c1, c2, x0, y0, dff, log_f = theta
-
-    tvars     = np.array([a1,a2,b1,b2,c1,c2])
+    a0, a1, a2, b0, b1, b2, x0, y0, dff = theta
+    tvars     = np.array([a1,a2,b1,b2])
     initdist  = np.linalg.norm([x0,y0])
-    magvars   = np.array([a0,b0,c0])
-    
-    if np.any(tvars < 0) or np.any(tvars >= nt) or log_f >= 1 or log_f < -10 or dff < 0 or initdist > maxr0:
+    magvars   = np.array([a0,b0])
+
+    if np.any(tvars < 0) or np.any(tvars >= nt) or dff < 0 or initdist > maxr0:
         return -np.inf
-    
+
     return np.sum(-magvars**2/mag_sigma2) - dff / dff_scale
 
 def random_parameter_set(iseed = seed):
     np.random.seed(iseed)
     
-    a0,b0,c0          = np.random.normal(loc=0, scale = mag_sigma, size = 3)
+    a0,b0       = np.random.normal(loc=0, scale = mag_sigma, size = 3)
     
-    a1,a2,b1,b2,c1,c2 = np.random.uniform(low=0,high=nt,size=6)
-    x0,y0             = np.random.uniform(low=-2, high=2, size=2)
-    log_f             = np.random.uniform(-10,1)
+    a1,a2,b1,b2 = np.random.uniform(low=0,high=nt,size=6)
+    x0,y0       = np.random.uniform(low=-2, high=2, size=2)
+    dff         = np.random.exponential(scale = dff_scale)
     
-    dff               = np.random.exponential(scale = dff_scale)
-    
-    return np.array([a0,a1,a2,b0,b1,b2,c0,c1,c2,x0,y0,dff,log_f])
+    return np.array([a0,a1,a2,b0,b1,b2,x0,y0,dff])
 
 def log_probability(theta, x, y, yerr):
     
@@ -231,84 +210,50 @@ def log_probability(theta, x, y, yerr):
 
 nll = lambda *args: -log_likelihood(*args)
 
-print("loading log reg output")
+logfile.write("\nloading log reg output")
 # model output: 
-preds   = np.load('{0}/log_reg_pca_preds.npy'.format(datdir))
-predss  = np.load('{0}/log_reg_pca_predss.npy'.format(datdir))
+
+#preds   = np.load('{0}/log_reg_pca_preds.npy'.format(outdir))
 # arranged as c0_rep0_t0, c0_rep0_t1, c0_rep0_t2...c0_rep1_t0, c0_rep1_t1,...,c0_rep2_t5,c1_rep0_t0,...,c2_rep2_t5
 
+#yerr = 0.02 + 0.02 * np.random.rand(*preds.shape) # completely made up!
+#predss  = np.load('{0}/log_reg_pca_predss.npy'.format(datdir))
 
-exps = np.zeros((preds.shape[0],ncond*nstg))
-idx  = 0
-for i in np.arange(ncond):
-    for j in np.arange(nrep):
-        for t in np.arange(nstg):
-            exps[idx, i*nstg:(i*nstg+t+1)]=1
-            idx += 1
+predsS  = np.load('{0}/log_reg_pca_predsS.npy'.format(datdir))
+
+y    = np.mean(predsS,axis=1)[:,:,:2]
+yerr = np.std(predsS,axis = 1)[:,:,:2]
+
+
+bmpOn = np.vstack([ np.ones(6) , np.zeros(6) , np.ones(6)])
+tgfOn = np.vstack([ np.zeros(6), np.zeros(6) , np.ones(6)])
+
+x = np.hstack([bmpOn,tgfOn]).T
             
-yerr = 0.02 + 0.02 * np.random.rand(*preds.shape) # completely made up!
-            
-            
-#alternatively, could use average over replicates and standard deviation as err? 
-predssMu = np.mean(predss,axis=2).reshape(3,18).T #i, j, k= p(cond), traj, stage
-yerrMu   = np.std(predss,axis = 2).reshape(3,18).T
-expsMu   = np.zeros((predssMu.shape[0],ncond*nstg))
-idx      = 0
-for i in np.arange(ncond):
-    for t in np.arange(nstg):
-        expsMu[idx, i*nstg:(i*nstg+t+1)]=1
-        idx += 1
-
-# REMOVING THIS ANNEALING STEP BECAUSE CHARLIE SAID IT WAS STUPID
-# LOCKS YOU INTO A SPECIFIC WELL OF A ROCKY LANDSCAPE
-#idxs     = np.array([5,11,17]) # annealing takes a while, so we're trying to maximize likelihood wrt only the easiest datapoints
-#xs       = expsMu[idxs].T
-#ys       = predssMu[idxs,0:2]
-#yerrs    = yerrMu[idxs,0:2]
-#
-#
-#print('before fitting\n')
-#print( basinProbFittingFunc(xs, *initial[0:-1]), nll(initial, xs, ys, yerrs) )
-#start = time.time()
-#soln    = dual_annealing(nll, x0=initial, args=(xs, ys, yerrs), bounds = [magbounds, tbounds, tbounds,
-#                                                                          magbounds, tbounds, tbounds,
-#                                                                          magbounds, tbounds, tbounds,
-#                                                                          posbounds, posbounds,
-#                                                                          dffbounds, logerrbounds], maxiter = niter)
-#end = time.time()
-#elapsed = end - start
-#
-#print('{0} iterations took {1} seconds\n'.format(niter, elapsed))
-#print(basinProbFittingFunc(xs, *soln.x[0:-1]),soln)
-#
-#np.save('{0}/dual_annealing_fit_{1}iter.npy'.format(datdir, niter),soln.x)
-#pos      = soln.x + np.abs(1e-4 * np.random.randn(nwalkers, ndim))
-
-print('\nhammer time')
-idxs     = np.arange(18) # sample wrt to all data points
-xs       = expsMu[idxs].T
-ys       = predssMu[idxs,0:2]
-yerrs    = yerrMu[idxs,0:2]
-
-pos      = np.array([random_parameter_set() for i in range(nwalkers)])
-
-pos      = random_parameter_set() + np.abs(1e-4*np.random.randn(nwalkers, ndim))
+logfile.write('\nhammer time')
+#pos = np.array([random_parameter_set() for i in range(nwalkers)])
+pos  = random_parameter_set() + np.abs(1e-4*np.random.randn(nwalkers, ndim))
 #print((pos,pos.shape))
 
-#initial  = np.array(np.hstack([initGaus, initGaus, initGaus, initPos, initDiff, initLogErrFrac])) + np.random.randn(13)
-#print((initial,initial.shape))
+# Set up the backend
+# Don't forget to clear it in case the file already exists
+filename = "{0}/sampler_backend.h5".format(outdir)
+backend = emcee.backends.HDFBackend(filename)
+backend.reset(nwalkers, ndim)
 
+# Initialize the sampler
 start = time.time()
 with Pool() as pool:
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(xs, ys, yerrs), pool=pool)
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, args=(x, y, yerr), pool=pool, backend=backend)
     sampler.run_mcmc(pos, chain_len, progress=args.showProgress);
-end = time.time()
+
+end     = time.time()
 elapsed = end - start
-ncpu = cpu_count()
-print('\nsampling with {0} walkers for {1} steps with {2} cpus took {3} seconds (niter = {4})\n'.format(nwalkers, chain_len, ncpu, elapsed, niter))
+
+logfile.write('\nsampling with {0} walkers for {1} steps took {3} seconds (niter = {4})\n'.format(nwalkers, chain_len, elapsed, niter))
 
 samples = sampler.get_chain(thin=args.thin)
-np.save('{0}/mcmc_samples_nw{1}_cl{2}_annealN{3}.npy'.format(datdir, nwalkers, chain_len, niter),samples)
+np.save('{0}/samples.npy'.format(outdir),samples)
 
 fig, axes = plt.subplots(ndim, figsize=(10, 20), sharex=True)
 
@@ -321,18 +266,18 @@ for i in range(ndim):
     #ax.yaxis.set_label_coords(-0.1, 0.5)
 
 axes[-1].set_xlabel("step number");
-plt.savefig('{0}/mcmc_parameter_chains_nw{1}_cl{2}_annealN{3}.png'.format(plotdir, nwalkers, chain_len, niter),bbox_inches="tight")
+plt.savefig('{0}/parameter_chains.png'.format(outdir),bbox_inches="tight")
 
 flat_samples = sampler.get_chain(discard=50, thin=15, flat=True)
 myguess = np.array([100,0,10,100,0,10,100,0,10,0,0,0.0001,-1])
 fig = corner.corner(
     flat_samples, labels=labels, truths=myguess#[m_true, b_true, np.log(f_true)]
 );
-plt.savefig('{0}/mcmc_corner_plot_nw{1}_cl{2}_annealN{3}.png'.format(plotdir, nwalkers, chain_len, niter),bbox_inches="tight")
+plt.savefig('{0}/corner_plot.png'.format(outdir),bbox_inches="tight")
 
 try:
     tau = sampler.get_autocorr_time()
-    print(tau)
+    logfile.write(tau)
 except emcee.autocorr.AutocorrError:
-    print('not enough data to compute autocorr')
+    logfile.write('\nnot enough data to compute autocorr')
 

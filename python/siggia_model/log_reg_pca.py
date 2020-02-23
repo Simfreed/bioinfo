@@ -37,14 +37,16 @@ clf.fit(X,y)
 preds  = clf.predict_proba(fulldat)
 # arranged as c0_rep0_t0, c0_rep0_t1, c0_rep0_t2...c0_rep1_t0, c0_rep1_t1,...,c0_rep2_t5,c1_rep0_t0,...,c2_rep2_t5
 
-predss = np.array(np.split(
+predsS = np.array(np.split(
     np.array(np.split(preds,9)) # split into each group of 6 time stages
              ,3) # split into each group of 3 replicates, such that
                   # 0th==> trajectory, 1th==> rep, 2th==>stage, 3th==>probability of condition
-).transpose((3,0,1,2))
+)
+predss = predsS.transpose((3,0,1,2))
 
 np.save('{0}/log_reg_pca_preds.npy'.format(datdir), preds)
 np.save('{0}/log_reg_pca_predss.npy'.format(datdir), predss)
+np.save('{0}/log_reg_pca_predsS.npy'.format(datdir), predsS)
 np.savetxt('{0}/log_reg_pca_preds.tsv'.format(datdir), preds)
 # now its 0th => p(cond), 1th=>trajectory, 2th=>rep, 3th=>stage
 
