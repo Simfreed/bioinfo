@@ -64,7 +64,7 @@ class ThreeWell():
         '''
         
         #param_list = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a2','a3','b0','b1','b2','b3','nper']
-        param_default_info = { 
+        self.param_default_info = { 
                 # name:  [ index    , value    , prior_type, prior_params ] 
                 'nt'   : [ 0        , 100      , 3         , [10,1000]  ],
                 'dt'   : [ 1        , 1        , 2         , [1]        ],
@@ -85,7 +85,7 @@ class ThreeWell():
                 } 
         
 
-        nparams = len(param_default_info)
+        nparams = len(self.param_default_info)
         np.random.seed(seed)
 
         self.model_params       = np.zeros(nparams) + np.NaN
@@ -94,7 +94,7 @@ class ThreeWell():
         self.theta_prior_scales = []
         theta_idx_dict          = {}
 
-        for k,v in param_default_info.items():
+        for k,v in self.param_default_info.items():
             if set_param_dict.get(k, None):
                 # param is set
                 self.model_params[v[0]] = set_param_dict[k]
@@ -117,9 +117,9 @@ class ThreeWell():
         # unless otherwise specified, these priors should be *defaulted* to span the trajectory timescale
         time_params =['a1','a2','b1','b2']
         if 'nt' in set_param_dict or 'nt' in default_value_params:
-            nt = self.model_params[param_default_info['nt'][0]]
+            nt = self.model_params[self.param_default_info['nt'][0]]
             for param in time_params:
-                idx = np.where(np.array(self.theta_idxs)==param_default_info[param][0])[0][0]
+                idx = np.where(np.array(self.theta_idxs)==self.param_default_info[param][0])[0][0]
                 if param not in unset_param_prior_scale_dict and self.theta_prior_types[idx] in [0,3]:
                     self.theta_prior_scales[idx][1] = nt 
 
@@ -136,8 +136,8 @@ class ThreeWell():
     ##################################################################################################   
     ############### Functions / lists for sampling parameters ########################################
     log_prior_uniform = lambda x, lower, upper: 0 if lower < x < upper else -np.inf
-    log_prior_gauss   = lambda x, mu, sigsq: -(x-mu)**2/sigsq
-    log_prior_exp     = lambda x, sc: -x/sc
+    log_prior_gauss   = lambda x, mu, sigsq: -(x-mu)**2/sig**2
+    log_prior_exp     = lambda x, sc: -x/sc if x > 0 else -np.inf
 
     log_prior_funcs   = [log_prior_uniform, log_prior_gauss , log_prior_exp        , log_prior_uniform]
     sampling_funcs    = [np.random.uniform, np.random.normal, np.random.exponential, np.random.randint]
@@ -146,11 +146,18 @@ class ThreeWell():
     def get_model_params(self):
         return self.model_params
     
+    def get_theta_labels(self):
+        theta_labels = []
+        for k,v in self.param_default_info.items():
+            if v[0] in self.theta_idxs:
+                theta_labels.append(k)
+        return theta_labels
+    
     def log_prior(self, theta):
         prior_tot = 0
 
         for i in range(self.ntheta):
-            prior_tot += log_prior_funcs[self.theta_prior_types[i]](theta[i], *self.theta_prior_scales[i])
+            prior_tot += self.log_prior_funcs[self.theta_prior_types[i]](theta[i], *self.theta_prior_scales[i])
 
         return prior_tot
 
