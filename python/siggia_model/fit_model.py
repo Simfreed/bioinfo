@@ -58,8 +58,8 @@ parser.add_argument("--prior_scale_params", type=str, nargs='+', help="list of p
 
 parser.add_argument("--fixed_values",   type=float, nargs='+', help="values of fixed params",     default = [])
 parser.add_argument("--prior_types",    type=int,   nargs='+', help="prior types, 0: uniform, 1: gaussian, 2: exponential, 3: integer", default = [])
-parser.add_argument("--prior_scales",   type=str,   
-        help="list of prior scales-- format: comma between two numbers for the same param, semicolon between params", default = '')
+parser.add_argument("--prior_scales",   type=str, nargs='+', 
+        help="list of prior scales-- format: comma between two numbers for the same param, space between numbers for different params", default = [])
 
 
 args = parser.parse_args()
@@ -92,9 +92,9 @@ x = np.hstack([np.repeat(bmpOn,nrep,axis=0),np.repeat(tgfOn,nrep,axis=0)]).T
 y = predsS.reshape((9,6,3))[:,:,:2]
 
 # initialize the model
-#prior_scales   = {'yerr':[0.0005], 'diff':[0.05], 'a0':[0,5], 'b0':[0,5], 'a2':[0,10], 'b2':[0,10]}
-default_params = args.default_params 
-prior_scales     = [[float(vi) for vi in v.split(',')] for v in args.prior_scales.split(';')]
+# prior_scales   = {'yerr':[0.0005], 'diff':[0.05], 'a0':[0,5], 'b0':[0,5], 'a2':[0,10], 'b2':[0,10]}
+default_params   = args.default_params 
+prior_scales     = [[float(vi) for vi in v.split(',')] for v in args.prior_scales]
 fixed_param_dict = {k:v for k,v in zip(args.fixed_params, args.fixed_values)} 
 prior_scale_dict = {k:v for k,v in zip(args.prior_scale_params, prior_scales)}
 prior_type_dict  = {k:v for k,v in zip(args.prior_type_params, args.prior_types)}
@@ -103,6 +103,10 @@ myw3   = w3.ThreeWell(set_param_dict = fixed_param_dict,   default_value_params 
         unset_param_prior_scale_dict = prior_scale_dict, unset_param_prior_type_dict = prior_type_dict, seed = args.seed)
 labels = myw3.get_theta_labels()
 print('fitting params: {0}'.format(labels))
+print('fixed params: {0}'.format(myw3.get_fixed_params()))
+print('priors on sampling params:\n')
+for k,v in myw3.get_prior_info().items():
+    print('{0}:{1}'.format(k,v))
 
 logfile.write('\nhammer time')
 ndim = myw3.ntheta

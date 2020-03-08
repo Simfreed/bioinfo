@@ -65,23 +65,24 @@ class ThreeWell():
         
         #param_list = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a2','a3','b0','b1','b2','b3','nper']
         self.param_default_info = { 
-                # name:  [ index    , value    , prior_type, prior_params ] 
-                'nt'   : [ 0        , 100      , 3         , [10,1000]  ],
-                'dt'   : [ 1        , 1        , 2         , [1]        ],
-                'tau'  : [ 2        , 10       , 2         , [10]       ],
-                'diff' : [ 3        , 0.05     , 2         , [0.05]     ],
-                'xpos' : [ 4        , 0        , 1         , [0,1]      ],
-                'ypos' : [ 5        , 0        , 1         , [0,1]      ],
-                'a0'   : [ 6        , 1        , 1         , [0,1]      ],
-                'a1'   : [ 7        , 50       , 0         , [0,100]    ],
-                'a2'   : [ 8        , 10       , 0         , [0,100]    ],
-                'a3'   : [ 9        , np.pi/2  , 0         , [0,2*np.pi]],
-                'b0'   : [ 10       , 1        , 1         , [0,1]      ],
-                'b1'   : [ 11       , 50       , 0         , [0,100]    ],
-                'b2'   : [ 12       , 10       , 0         , [0,100]    ],
-                'b3'   : [ 13       , 7*np.pi/6, 0         , [0,2*np.pi]],
-                'nper' : [ 14       , 100      , 3         , [10,200]   ],
-                'yerr' : [ 15       , 0.0005   , 2         , [0.0005]   ]
+                # name:   [ index    , value    , prior_type, prior_params ] 
+                'nt'    : [ 0        , 100      , 3         , [10,1000]  ],
+                'dt'    : [ 1        , 1        , 2         , [1]        ],
+                'tau'   : [ 2        , 10       , 2         , [10]       ],
+                'diff'  : [ 3        , 0.05     , 2         , [0.05]     ],
+                'xpos'  : [ 4        , 0        , 1         , [0,1]      ],
+                'ypos'  : [ 5        , 0        , 1         , [0,1]      ],
+                'a0'    : [ 6        , 1        , 1         , [0,1]      ],
+                'a1'    : [ 7        , 50       , 0         , [0,100]    ],
+                'a2'    : [ 8        , 10       , 0         , [0,100]    ],
+                'a3'    : [ 9        , np.pi/2  , 0         , [0,2*np.pi]],
+                'b0'    : [ 10       , 1        , 1         , [0,1]      ],
+                'b1'    : [ 11       , 50       , 0         , [0,100]    ],
+                'b2'    : [ 12       , 10       , 0         , [0,100]    ],
+                'b3'    : [ 13       , 7*np.pi/6, 0         , [0,2*np.pi]],
+                'nper'  : [ 14       , 100      , 3         , [10,200]   ],
+                'yerr'  : [ 15       , 0.0005   , 2         , [0.0005]   ],
+                'lag'   : [ 16       , 0        , 3         , [0,20]     ]
                 } 
         
 
@@ -93,16 +94,15 @@ class ThreeWell():
         self.theta_prior_types  = []
         self.theta_prior_scales = []
         theta_idx_dict          = {}
-
         for k,v in self.param_default_info.items():
-            if set_param_dict.get(k, None):
-                # param is set
+            if k in set_param_dict:
+                # param is fixed by user
                 self.model_params[v[0]] = set_param_dict[k]
             elif k in default_value_params:
-                # param is set to default
+                # param is fixed to default
                 self.model_params[v[0]] = v[1]
             else:
-                # param is unset
+                # param is unfixed
                 self.theta_idxs.append(v[0])
 
                 prior_type  = unset_param_prior_type_dict.get(  k, v[2])
@@ -136,15 +136,22 @@ class ThreeWell():
     ##################################################################################################   
     ############### Functions / lists for sampling parameters ########################################
     log_prior_uniform = lambda x, lower, upper: 0 if lower < x < upper else -np.inf
-    log_prior_gauss   = lambda x, mu, sigsq: -(x-mu)**2/sig**2
+    log_prior_gauss   = lambda x, mu, sig: -(x-mu)**2/sig**2
     log_prior_exp     = lambda x, sc: -x/sc if x > 0 else -np.inf
 
+
+    prior_func_names  = ['uniform'        , 'gaussian'      , 'exponential'        , 'integer'        ]
     log_prior_funcs   = [log_prior_uniform, log_prior_gauss , log_prior_exp        , log_prior_uniform]
     sampling_funcs    = [np.random.uniform, np.random.normal, np.random.exponential, np.random.randint]
     ###################################################################################################    
 
-    def get_model_params(self):
-        return self.model_params
+    def get_fixed_params(self):
+        fixed_params = {}
+        for k, v in self.param_default_info.items():
+            val = self.model_params[v[0]]
+            if not np.isnan(val):
+                fixed_params[k]=val
+        return fixed_params
     
     def get_theta_labels(self):
         theta_labels = []
@@ -152,6 +159,15 @@ class ThreeWell():
             if v[0] in self.theta_idxs:
                 theta_labels.append(k)
         return theta_labels
+    
+    def get_prior_info(self):
+        theta_info = {}
+        thidxs = np.array(self.theta_idxs)
+        for k,v in self.param_default_info.items():
+            z = np.where(thidxs==v[0])[0]
+            if len(z) > 0:
+                theta_info[k] = self.prior_func_names[self.theta_prior_types[z[0]]],self.theta_prior_scales[z[0]]
+        return theta_info
     
     def log_prior(self, theta):
         prior_tot = 0
@@ -204,12 +220,13 @@ def getTrajBasinProbabilities(x, params, nstg):
     b0,b1,b2,b3: 10,11,12,13
     nper: 14
     yerr: 15        
+    lag : 16
     '''
     
     trajBasins  = fullTrajD(np.repeat(x[0:nstg],         int(params[14]), axis=1), 
                             np.repeat(x[nstg:2*nstg],    int(params[14]), axis=1), 
                             params[6:10], params[10:14], params[4:6], 
-                            params[3], int(params[0]), params[1], params[2], nstg)
+                            params[3], int(params[0]), params[1], params[2], int(params[16]), nstg)
     
     trajBasinsS = np.array(np.split(trajBasins, range(int(params[14]), trajBasins.shape[1], int(params[14])), axis=1))
     return np.mean(trajBasinsS, axis=2)
@@ -234,8 +251,8 @@ def getBasins(rs):
     basins[inb2,2] = 1
     return basins
 
-def rdot(r, noise, tau, l0, l1, v0, v1):
-    return 1/tau * (sigma1(f(r) + np.outer(l0,v0) + np.outer(l1,v1)) - r) + noise
+def rdot(r, tau, l0, l1, v0, v1):
+    return 1/tau * (sigma1(f(r) + np.outer(l0,v0) + np.outer(l1,v1)) - r)
 
 def getSigSeriesG(sts, nt, a, mu, sig):
 
@@ -246,7 +263,7 @@ def getSigSeriesG(sts, nt, a, mu, sig):
     stsRepeated = np.vstack([np.repeat(sts,nper,axis=0),np.zeros((nt-nper*6,sts.shape[1]))])
     return (stsRepeated.T*gaus).T
 
-def fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, npts=6):
+def fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, lag, npts=6):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
     # sigParams = parameters for getSigSeries function
@@ -264,13 +281,16 @@ def fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, npts=6
     rs      = np.zeros((sts0.shape[1], nt, r0.shape[0])) # M x nt x 2
     rs[:,0] = r0
 
-    for t in range(0, nt-1):
-        rs[:,t+1] = rs[:,t] + dt*rdot(rs[:,t], noises[t], tau, l0s[t], l1s[t], v0, v1)
+    for t in range(0, lag):
+        rs[:,t+1] = rs[:,t] + dt*noises[t]
+
+    for t in range(lag, nt-1):
+        rs[:,t+1] = rs[:,t] + dt*(rdot(rs[:,t], tau, l0s[t], l1s[t], v0, v1) + noises[t])
+
     
     tidxs = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
     return np.array([getBasins(rs[:,t]) for t in tidxs]) # should vectorize getBasins...
 
-def fullTrajD(sts0, sts1, sigParams0, sigParams1, r0, dff, nt, dt, tau, npts=6):
+def fullTrajD(sts0, sts1, sigParams0, sigParams1, r0, dff, nt, dt, tau, lag, npts=6):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts0.shape[1],2))
-    return fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, npts)
-
+    return fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, lag, npts)
