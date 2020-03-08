@@ -11,7 +11,7 @@ from sklearn.linear_model import LogisticRegression as logreg
 from numpy import linalg as linalg
 
 # directories
-topdir  = '/home/slf3348'
+topdir  = '/Users/simonfreedman/cqub' #'/home/slf3348'
 datdir  = '{0}/xenopus/data'.format(topdir)
 plotdir = '{0}/xenopus/plots'.format(topdir)
 
