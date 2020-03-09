@@ -77,7 +77,7 @@ os.makedirs(outdir, exist_ok = True)
 logfile = open("{0}/log.txt".format(outdir), "a+")
 
 # record args
-np.save('0}/args.npy'.format(outdir), args) 
+np.save('{0}/args.npy'.format(outdir), args) 
 
 # Load the training data
 predsS  = np.load('{0}/log_reg_pca_predss.npy'.format(datdir))
@@ -105,8 +105,8 @@ print('fitting params: {0}'.format(labels))
 print('fixed params: {0}'.format(myw3.get_fixed_params()))
 print('priors on sampling params:\n')
 
-np.save('0}/fixed_params.npy'.format(outdir), myw3.get_fixed_params()) 
-np.save('0}/fit_params.npy'.format(outdir),   myw3.get_theta_labels()) 
+np.save('{0}/fixed_params.npy'.format(outdir), myw3.get_fixed_params()) 
+np.save('{0}/fit_params.npy'.format(outdir),   myw3.get_theta_labels()) 
 
 for k,v in myw3.get_prior_info().items():
     print('{0}:{1}'.format(k,v))
