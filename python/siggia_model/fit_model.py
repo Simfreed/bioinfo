@@ -74,12 +74,10 @@ topdir  = '/projects/p30129/simonf/out' #/home/slf3348'
 datdir  = '{0}/xenopus/data/siggia_mcmc'.format(topdir)
 outdir  = '{0}/{1}'.format(datdir,args.dir)
 os.makedirs(outdir, exist_ok = True)
+logfile = open("{0}/log.txt".format(outdir), "a+")
 
 # record args
-f       = open("{0}/args.txt".format(outdir),"a+")
-f.write( str(args) )
-f.close()
-logfile = open("{0}/log.txt".format(outdir), "a+")
+np.save('{0}/args.npy'.format(outdir), args) 
 
 # Load the training data
 predsS  = np.load('{0}/log_reg_pca_predss.npy'.format(datdir))
@@ -102,9 +100,14 @@ prior_type_dict  = {k:v for k,v in zip(args.prior_type_params, args.prior_types)
 myw3   = w3.ThreeWell(set_param_dict = fixed_param_dict,   default_value_params = default_params,
         unset_param_prior_scale_dict = prior_scale_dict, unset_param_prior_type_dict = prior_type_dict, seed = args.seed)
 labels = myw3.get_theta_labels()
+
 print('fitting params: {0}'.format(labels))
 print('fixed params: {0}'.format(myw3.get_fixed_params()))
 print('priors on sampling params:\n')
+
+np.save('{0}/fixed_params.npy'.format(outdir), myw3.get_fixed_params()) 
+np.save('{0}/fit_params.npy'.format(outdir),   myw3.get_theta_labels()) 
+
 for k,v in myw3.get_prior_info().items():
     print('{0}:{1}'.format(k,v))
 
@@ -155,10 +158,8 @@ axes[-1].set_xlabel("step number");
 plt.savefig('{0}/parameter_chains.png'.format(outdir),bbox_inches="tight")
 
 flat_samples = sampler.get_chain(discard=50, thin=15, flat=True)
-myguess = np.array([100,0,10,100,0,10,100,0,10,0,0,0.0001,-1])
-fig = corner.corner(
-    flat_samples, labels=labels, truths=myguess#[m_true, b_true, np.log(f_true)]
-);
+#myguess = np.array([100,0,10,100,0,10,100,0,10,0,0,0.0001,-1])
+fig = corner.corner(flat_samples, labels=labels);
 plt.savefig('{0}/corner_plot.png'.format(outdir),bbox_inches="tight")
 
 try:
