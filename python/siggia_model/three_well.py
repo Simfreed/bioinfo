@@ -65,24 +65,26 @@ class ThreeWell():
         
         #param_list = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a2','a3','b0','b1','b2','b3','nper']
         self.param_default_info = { 
-                # name:   [ index    , value    , prior_type, prior_params ] 
-                'nt'    : [ 0        , 100      , 3         , [10,1000]  ],
-                'dt'    : [ 1        , 1        , 2         , [1]        ],
-                'tau'   : [ 2        , 10       , 2         , [10]       ],
-                'diff'  : [ 3        , 0.05     , 2         , [0.05]     ],
-                'xpos'  : [ 4        , 0        , 1         , [0,1]      ],
-                'ypos'  : [ 5        , 0        , 1         , [0,1]      ],
-                'a0'    : [ 6        , 1        , 1         , [0,1]      ],
-                'a1'    : [ 7        , 50       , 0         , [0,100]    ],
-                'a2'    : [ 8        , 10       , 0         , [0,100]    ],
-                'a3'    : [ 9        , np.pi/2  , 0         , [0,2*np.pi]],
-                'b0'    : [ 10       , 1        , 1         , [0,1]      ],
-                'b1'    : [ 11       , 50       , 0         , [0,100]    ],
-                'b2'    : [ 12       , 10       , 0         , [0,100]    ],
-                'b3'    : [ 13       , 7*np.pi/6, 0         , [0,2*np.pi]],
-                'nper'  : [ 14       , 100      , 3         , [10,200]   ],
-                'yerr'  : [ 15       , 0.0005   , 2         , [0.0005]   ],
-                'lag'   : [ 16       , 0        , 3         , [0,20]     ]
+                # name:   [ index   , value        , prior_type, prior_params ] 
+                'nt'    : [ 0       , 100          , 3         , [10,1000]  ],
+                'dt'    : [ 1       , 1            , 2         , [1]        ],
+                'tau'   : [ 2       , 10           , 2         , [10]       ],
+                'diff'  : [ 3       , 0.05         , 2         , [0.05]     ],
+                'xpos'  : [ 4       , 0            , 1         , [0,1]      ],
+                'ypos'  : [ 5       , 0            , 1         , [0,1]      ],
+                'a0'    : [ 6       , 1            , 1         , [0,1]      ],
+                'a3'    : [ 7       , 11*np.pi/6   , 0         , [0,2*np.pi]],
+                'b0'    : [ 8       , 1            , 1         , [0,1]      ],
+                'b1'    : [ 9       , 50           , 0         , [0,100]    ],
+                'b2'    : [ 10      , 10           , 0         , [0,100]    ],
+                'b3'    : [ 11      , np.pi/2      , 0         , [0,2*np.pi]],
+                'c0'    : [ 12      , 1            , 1         , [0,1]      ],
+                'c1'    : [ 13      , 50           , 0         , [0,100]    ],
+                'c2'    : [ 14      , 10           , 0         , [0,100]    ],
+                'c3'    : [ 15      , 7*np.pi/6    , 0         , [0,2*np.pi]],
+                'nper'  : [ 16      , 100          , 3         , [10,200]   ],
+                'yerr'  : [ 17      , 0.0005       , 2         , [0.0005]   ],
+                'lag'   : [ 18      , 0            , 3         , [0,20]     ]
                 } 
         
 
@@ -115,7 +117,7 @@ class ThreeWell():
 
         # some logic specific to uniformly distributed parameters with units of time
         # unless otherwise specified, these priors should be *defaulted* to span the trajectory timescale
-        time_params =['a1','a2','b1','b2']
+        time_params =['b1','b2','c1','c2']
         if 'nt' in set_param_dict or 'nt' in default_value_params:
             nt = self.model_params[self.param_default_info['nt'][0]]
             for param in time_params:
@@ -218,19 +220,20 @@ def getTrajBasinProbabilities(x, params, nstg):
     param indexes:
     nt, dt, tau, diff: 0,1,2,3
     x,y: 4,5
-    a0,a1,a2,a3: 6,7,8,9
-    b0,b1,b2,b3: 10,11,12,13
-    nper: 14
-    yerr: 15        
-    lag : 16
+    a0,a3: 6,7
+    b0,b1,b2,b3: 8,9,10,11
+    c0,c1,c2,c3: 12,13,14,15
+    nper: 16
+    yerr: 17        
+    lag : 18
     '''
     
-    trajBasins  = fullTrajD(np.repeat(x[0:6],         int(params[14]), axis=1), 
-                            np.repeat(x[6:12],    int(params[14]), axis=1), 
-                            params[6:10], params[10:14], params[4:6], 
-                            params[3], int(params[0]), params[1], params[2], int(params[16]), nstg)
+    trajBasins  = fullTrajD(np.repeat(x[0:6],   int(params[16]), axis=1), 
+                            np.repeat(x[6:12],  int(params[16]), axis=1), 
+                            params[6:8], params[8:12], params[12:16], params[4:6], 
+                            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg)
     
-    trajBasinsS = np.array(np.split(trajBasins, range(int(params[14]), trajBasins.shape[1], int(params[14])), axis=1))
+    trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
     return np.mean(trajBasinsS, axis=2)
 
 
@@ -253,8 +256,8 @@ def getBasins(rs):
     basins[inb2,2] = 1
     return basins
 
-def rdot(r, tau, l0, l1, v0, v1):
-    return 1/tau * (sigma1(f(r) + np.outer(l0,v0) + np.outer(l1,v1)) - r)
+def rdot(r, tau, l0, l1, l2, v0, v1, v2):
+    return 1/tau * (sigma1(f(r) + np.outer(l0,v0) + np.outer(l1,v1) + np.outer(l2,v2)) - r)
 
 def rdot0(r, tau):
     return 1/tau * (sigma1(f(r)) - r)
@@ -268,43 +271,47 @@ def getSigSeriesG(sts, nt, a, mu, sig):
     stsRepeated = np.vstack([np.repeat(sts,nper,axis=0),np.zeros((nt-nper*6,sts.shape[1]))])
     return (stsRepeated.T*gaus).T
 
-def fullTrajPos(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, lag, npts=6):
+def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
     # sigParams = parameters for getSigSeries function
     # r0 = initial position on fate landscape 1x2
-    # noises = noise at each timestep for each data point --> nt x M
+    # noises = noise at each timestep for each data point --> nt x M x 2
     # nt = number of timesteps (integer)
     # dt = length of timesteps (float)
     # tau = timescale (float)
     
-    l0s = getSigSeriesG(sts0, nt, *sigParams0[0:3])
-    l1s = getSigSeriesG(sts1, nt, *sigParams1[0:3]) # nt x M
-    v0  = np.array([np.cos(sigParams0[3]), np.sin(sigParams0[3])])
-    v1  = np.array([np.cos(sigParams1[3]), np.sin(sigParams1[3])])
+    l0s = np.zeros((nt, sts1.shape[1])) + m0[0]
+    l1s = getSigSeriesG(sts1, nt, *m1[0:3]) # nt x M
+    l2s = getSigSeriesG(sts2, nt, *m2[0:3]) # nt x M
+    v0  = np.array([np.cos(m0[1]), np.sin(m0[1])])
+    v1  = np.array([np.cos(m1[3]), np.sin(m1[3])])
+    v2  = np.array([np.cos(m2[3]), np.sin(m2[3])])
 
-    rs      = np.zeros((sts0.shape[1], nt, r0.shape[0])) # M x nt x 2
+    # should be able to evaluate m(t) = l0v0+l1v1+l2v2 and feed that into rdot to save some computation time...
+
+    rs      = np.zeros((sts1.shape[1], nt, r0.shape[0])) # M x nt x 2
     rs[:,0] = r0
 
     for t in range(0, lag):
         rs[:,t+1] = rs[:,t] + dt*noises[t]
 
     for t in range(lag, nt-1):
-        rs[:,t+1] = rs[:,t] + dt*(rdot(rs[:,t], tau, l0s[t], l1s[t], v0, v1) + noises[t])
+        rs[:,t+1] = rs[:,t] + dt*(rdot(rs[:,t], tau, l0s[t], l1s[t], l2s[t], v0, v1, v2) + noises[t])
 
     return rs
 
-def fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, lag, npts=6):
+def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6):
     
-    rs      = fullTrajPos(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, lag, npts) 
+    rs      = fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
 
     return np.array([getBasins(rs[:,t]) for t in tidxs]) # should vectorize getBasins...
 
-def fullTrajD(sts0, sts1, sigParams0, sigParams1, r0, dff, nt, dt, tau, lag, npts=6):
-    noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts0.shape[1],2))
-    return fullTraj(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, lag, npts)
+def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6):
+    noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
+    return fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts)
 
-def fullTrajPosD(sts0, sts1, sigParams0, sigParams1, r0, dff, nt, dt, tau, lag):
-    noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts0.shape[1],2))
-    return fullTrajPos(sts0, sts1, sigParams0, sigParams1, r0, noises, nt, dt, tau, lag)
+def fullTrajPosD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag):
+    noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
+    return fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag)
