@@ -49,7 +49,7 @@ class ThreeWell():
 
     '''
     def __init__(self, set_param_dict = {}, unset_param_prior_type_dict = {}, unset_param_prior_scale_dict = {}, 
-            default_value_params = [], seed = None):
+            default_value_params = [], rdotf = rdot, seed = None):
         
         '''
             model_params       = values for all the parameters
@@ -64,6 +64,10 @@ class ThreeWell():
         '''
         
         #param_list = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a2','a3','b0','b1','b2','b3','nper']
+        
+        self.rdotf = rdotf
+        np.random.seed(seed)
+
         self.param_default_info = { 
                 # name:   [ index   , value        , prior_type, prior_params ] 
                 'nt'    : [ 0       , 100          , 3         , [10,1000]  ],
@@ -87,9 +91,7 @@ class ThreeWell():
                 'lag'   : [ 18      , 0            , 3         , [0,20]     ]
                 } 
         
-
         nparams = len(self.param_default_info)
-        np.random.seed(seed)
 
         self.model_params       = np.zeros(nparams) + np.NaN
         self.theta_idxs         = []
@@ -196,7 +198,7 @@ class ThreeWell():
     def log_likelihood(self, theta, x, y):
         
         params = self.get_params(theta)
-        model  = getTrajBasinProbabilities(x, params, y.shape[1])[:,:,:2]
+        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.rdotf)[:,:,:2]
     
         return -0.5*np.sum((y - model) ** 2 / params[15] )
 
@@ -214,7 +216,7 @@ class ThreeWell():
 
 sqrt3over3 = np.sqrt(3)/3
 # model running functions
-def getTrajBasinProbabilities(x, params, nstg):
+def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot):
 
     '''
     param indexes:
@@ -231,7 +233,7 @@ def getTrajBasinProbabilities(x, params, nstg):
     trajBasins  = fullTrajD(np.repeat(x[0:6],   int(params[16]), axis=1), 
                             np.repeat(x[6:12],  int(params[16]), axis=1), 
                             params[6:8], params[8:12], params[12:16], params[4:6], 
-                            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg)
+                            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf)
     
     trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
     return np.mean(trajBasinsS, axis=2)
@@ -256,11 +258,33 @@ def getBasins(rs):
     basins[inb2,2] = 1
     return basins
 
-def rdot(r, tau, l0, l1, l2, v0, v1, v2):
-    return 1/tau * (sigma1(f(r) + np.outer(l0,v0) + np.outer(l1,v1) + np.outer(l2,v2)) - r)
+def rdot(r, tau, tilt):
+    return (sigma1(f(r) + tilt) - r) / tau
 
-def rdot0(r, tau):
-    return 1/tau * (sigma1(f(r)) - r)
+# gradient of U(r) = -r^4cos(3(phi-pi/2))+2/3r^6, which has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
+def rdot3(r, tau, tilt):
+    
+    x = r[:,0]
+    y = r[:,1]
+
+    rmaginv  = 1. / np.sqrt(x*x+y*y)
+    
+    gradx = 4*x**5                 + x*y**3*( 4*y + 5*rmaginv ) + y*x**3*(  8*y + 9*rmaginv )
+    grady = 4*y**4*( y - rmaginv ) + x**4*(   4*y + 3*rmaginv ) + x*x*y*y*( 8*y + 3*rmaginv )
+
+    return (-np.array([gradx, grady]).T + tilt) / tau
+
+# gradient of U(r) = r^2-2r^4cos(3(phi-pi/2))+r^6, which has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
+def rdot4(r, tau, tilt):
+    
+    x = r[:,0]
+    y = r[:,1]
+    
+    rmag  = np.sqrt(x*x+y*y)
+    
+    gradx = 2*x*( 1 + 3*x**4   + 6*x*x*y*y   + 3*y**4 - 4*y**3/rmag + 9*y*rmag )
+    grady = 2*(   y - 3*y*x**4 + 6*x*x*y*y*y + 3*y**5 - 4*y*y*rmag  + (3*x**4 + 7*x*x*y*y)/rmag)
+    return (-np.array([gradx, grady]).T + tilt) / tau
 
 def getSigSeriesG(sts, nt, a, mu, sig):
 
@@ -271,7 +295,8 @@ def getSigSeriesG(sts, nt, a, mu, sig):
     stsRepeated = np.vstack([np.repeat(sts,nper,axis=0),np.zeros((nt-nper*6,sts.shape[1]))])
     return (stsRepeated.T*gaus).T
 
-def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6):
+getTilt = lambda l,v: np.array([l]).transpose((1,2,0)).dot(v)
+def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6, rdotf = rdot):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
     # sigParams = parameters for getSigSeries function
@@ -284,10 +309,11 @@ def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6):
     l0s = np.zeros((nt, sts1.shape[1])) + m0[0]
     l1s = getSigSeriesG(sts1, nt, *m1[0:3]) # nt x M
     l2s = getSigSeriesG(sts2, nt, *m2[0:3]) # nt x M
-    v0  = np.array([np.cos(m0[1]), np.sin(m0[1])])
-    v1  = np.array([np.cos(m1[3]), np.sin(m1[3])])
-    v2  = np.array([np.cos(m2[3]), np.sin(m2[3])])
-
+    v0  = np.array([[np.cos(m0[1]), np.sin(m0[1])]])
+    v1  = np.array([[np.cos(m1[3]), np.sin(m1[3])]])
+    v2  = np.array([[np.cos(m2[3]), np.sin(m2[3])]])
+    
+    tilt = getTilt(l0s, v0) + getTilt(l1s, v1) + getTilt(l2s, v2)
     # should be able to evaluate m(t) = l0v0+l1v1+l2v2 and feed that into rdot to save some computation time...
 
     rs      = np.zeros((sts1.shape[1], nt, r0.shape[0])) # M x nt x 2
@@ -297,21 +323,21 @@ def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6):
         rs[:,t+1] = rs[:,t] + dt*noises[t]
 
     for t in range(lag, nt-1):
-        rs[:,t+1] = rs[:,t] + dt*(rdot(rs[:,t], tau, l0s[t], l1s[t], l2s[t], v0, v1, v2) + noises[t])
+        rs[:,t+1] = rs[:,t] + dt*(rdotf(rs[:,t], tau, tilt[t]) + noises[t])
 
     return rs
 
-def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6):
+def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6, rdotf=rdot):
     
-    rs      = fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts) 
+    rs      = fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts, rdotf) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
 
     return np.array([getBasins(rs[:,t]) for t in tidxs]) # should vectorize getBasins...
 
-def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6):
+def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf=rdot):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
-    return fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts)
+    return fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts, rdotf)
 
-def fullTrajPosD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag):
+def fullTrajPosD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
-    return fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag)
+    return fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
