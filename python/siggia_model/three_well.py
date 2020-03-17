@@ -49,7 +49,7 @@ class ThreeWell():
 
     '''
     def __init__(self, set_param_dict = {}, unset_param_prior_type_dict = {}, unset_param_prior_scale_dict = {}, 
-            default_value_params = [], rdotf = rdot, seed = None):
+            default_value_params = [], rdot_idx = 0, seed = None):
         
         '''
             model_params       = values for all the parameters
@@ -64,8 +64,9 @@ class ThreeWell():
         '''
         
         #param_list = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a2','a3','b0','b1','b2','b3','nper']
-        
-        self.rdotf = rdotf
+        rdot_funs  = [rdot, rdot3, rdot4]
+        self.rdotf = rdot_funs[rdot_idx]
+
         np.random.seed(seed)
 
         self.param_default_info = { 
@@ -216,28 +217,6 @@ class ThreeWell():
 
 sqrt3over3 = np.sqrt(3)/3
 # model running functions
-def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot):
-
-    '''
-    param indexes:
-    nt, dt, tau, diff: 0,1,2,3
-    x,y: 4,5
-    a0,a3: 6,7
-    b0,b1,b2,b3: 8,9,10,11
-    c0,c1,c2,c3: 12,13,14,15
-    nper: 16
-    yerr: 17        
-    lag : 18
-    '''
-    
-    trajBasins  = fullTrajD(np.repeat(x[0:6],   int(params[16]), axis=1), 
-                            np.repeat(x[6:12],  int(params[16]), axis=1), 
-                            params[6:8], params[8:12], params[12:16], params[4:6], 
-                            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf)
-    
-    trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
-    return np.mean(trajBasinsS, axis=2)
-
 
 def f(r):
     return 2*r + np.vstack([-2*r[:,0]*r[:,1] , r[:,1]**2 - r[:,0]**2]).T
@@ -271,7 +250,7 @@ def rdot3(r, tau, tilt):
     
     gradx = 4*x**5                 + x*y**3*( 4*y + 5*rmaginv ) + y*x**3*(  8*y + 9*rmaginv )
     grady = 4*y**4*( y - rmaginv ) + x**4*(   4*y + 3*rmaginv ) + x*x*y*y*( 8*y + 3*rmaginv )
-
+    # print('x = {0}; gradx={1}'.format(x,gradx))
     return (-np.array([gradx, grady]).T + tilt) / tau
 
 # gradient of U(r) = r^2-2r^4cos(3(phi-pi/2))+r^6, which has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
@@ -285,6 +264,7 @@ def rdot4(r, tau, tilt):
     gradx = 2*x*( 1 + 3*x**4   + 6*x*x*y*y   + 3*y**4 - 4*y**3/rmag + 9*y*rmag )
     grady = 2*(   y - 3*y*x**4 + 6*x*x*y*y*y + 3*y**5 - 4*y*y*rmag  + (3*x**4 + 7*x*x*y*y)/rmag)
     return (-np.array([gradx, grady]).T + tilt) / tau
+
 
 def getSigSeriesG(sts, nt, a, mu, sig):
 
@@ -341,3 +321,26 @@ def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf=r
 def fullTrajPosD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
     return fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
+
+def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot):
+
+    '''
+    param indexes:
+    nt, dt, tau, diff: 0,1,2,3
+    x,y: 4,5
+    a0,a3: 6,7
+    b0,b1,b2,b3: 8,9,10,11
+    c0,c1,c2,c3: 12,13,14,15
+    nper: 16
+    yerr: 17        
+    lag : 18
+    '''
+    
+    trajBasins  = fullTrajD(np.repeat(x[0:6],   int(params[16]), axis=1), 
+                            np.repeat(x[6:12],  int(params[16]), axis=1), 
+                            params[6:8], params[8:12], params[12:16], params[4:6], 
+                            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf)
+    
+    trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
+    return np.mean(trajBasinsS, axis=2)
+

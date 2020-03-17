@@ -60,6 +60,7 @@ parser.add_argument("--fixed_values",   type=float, nargs='+', help="values of f
 parser.add_argument("--prior_types",    type=int,   nargs='+', help="prior types, 0: uniform, 1: gaussian, 2: exponential, 3: integer", default = [])
 parser.add_argument("--prior_scales",   type=str, nargs='+', 
         help="list of prior scales-- format: comma between two numbers for the same param, space between numbers for different params", default = [])
+parser.add_argument("--rdot_type",   type=int, help="dynamics_func: 0 = siggia; 1 = polar, three well; 2 = polar, four well", default = 0)
 
 
 args = parser.parse_args()
@@ -98,7 +99,9 @@ prior_scale_dict = {k:v for k,v in zip(args.prior_scale_params, prior_scales)}
 prior_type_dict  = {k:v for k,v in zip(args.prior_type_params, args.prior_types)}
 
 myw3   = w3.ThreeWell(set_param_dict = fixed_param_dict,   default_value_params = default_params,
-        unset_param_prior_scale_dict = prior_scale_dict, unset_param_prior_type_dict = prior_type_dict, seed = args.seed)
+        unset_param_prior_scale_dict = prior_scale_dict, unset_param_prior_type_dict = prior_type_dict, seed = args.seed,
+        rdot_idx = args.rdot_type)
+
 labels = myw3.get_theta_labels()
 
 print('fitting params: {0}'.format(labels))
