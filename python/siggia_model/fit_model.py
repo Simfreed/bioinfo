@@ -60,8 +60,8 @@ parser.add_argument("--fixed_values",   type=float, nargs='+', help="values of f
 parser.add_argument("--prior_types",    type=int,   nargs='+', help="prior types, 0: uniform, 1: gaussian, 2: exponential, 3: integer", default = [])
 parser.add_argument("--prior_scales",   type=str, nargs='+', 
         help="list of prior scales-- format: comma between two numbers for the same param, space between numbers for different params", default = [])
-parser.add_argument("--rdot_type",   type=int, help="dynamics_func: 0 = siggia; 1 = polar, three well; 2 = polar, four well", default = 0)
-
+parser.add_argument("--rdot_type",       type=int, help="dynamics_func: 0 = siggia; 1 = polar, three well; 2 = polar, four well", default = 0)
+parser.add_argument("--init_pos_file",   type=str, help="dict with sampling initial position data", default = 'rdot_guess.npy')
 
 args = parser.parse_args()
 
@@ -116,7 +116,17 @@ for k,v in myw3.get_prior_info().items():
 
 logfile.write('\nhammer time')
 ndim = myw3.ntheta
-pos  = myw3.random_parameter_set() + np.abs(1e-4*np.random.randn(nwalkers, ndim))
+#pos  = myw3.random_parameter_set() + np.abs(1e-4*np.random.randn(nwalkers, ndim))
+
+# guess for siggia version of rdot
+if args.init_pos_file:
+    params_guess = np.load('{0}/{1}'.format(datdir, args.init_pos_file), allow_pickle=True).item()
+    theta_guess = myw3.make_theta(params_guess)
+else:
+    theta_guess = myw3.random_parameter_set()
+
+print('\ninitializing near {0}'.format(theta_guess))
+pos = theta_guess + np.abs(1e-4*np.random.randn(nwalkers, ndim))
 
 # Set up the backend
 # Don't forget to clear it in case the file already exists

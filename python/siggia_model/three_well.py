@@ -187,7 +187,18 @@ class ThreeWell():
     def random_parameter_set(self):
         
         return [self.sampling_funcs[self.theta_prior_types[i]](*self.theta_prior_scales[i]) for i in range(self.ntheta)]
-
+    
+    def make_theta(self, params):
+        
+        thidxs = np.array(self.theta_idxs)
+        th     = np.zeros(self.ntheta)
+        
+        for k,v in params.items():
+            z = np.where(thidxs==self.param_default_info[k][0])[0]
+            if len(z) > 0:
+                th[z[0]] = v
+        return th
+       
     def get_params(self, theta): 
         params = self.model_params
         
