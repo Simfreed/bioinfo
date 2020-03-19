@@ -240,29 +240,51 @@ def getBasins(rs):
 def rdot(r, tau, tilt):
     return (sigma1(f(r) + tilt) - r) / tau
 
-# gradient of U(r) = -r^4cos(3(phi-pi/2))+2/3r^6, which has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
-def rdot3(r, tau, tilt):
+# gradient of U(r) = -r^4cos(3(phi-pi/2))+b*r^6, 
+# with b=2/3, has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
+def rdot3(r, tau, tilt, b = 2/3):
     
     x = r[:,0]
     y = r[:,1]
 
-    rmaginv  = 1. / np.sqrt(x*x+y*y)
     
-    gradx = 4*x**5                 + x*y**3*( 4*y + 5*rmaginv ) + y*x**3*(  8*y + 9*rmaginv )
-    grady = 4*y**4*( y - rmaginv ) + x**4*(   4*y + 3*rmaginv ) + x*x*y*y*( 8*y + 3*rmaginv )
+    #rmaginv  = 1. / np.sqrt(x*x+y*y)
+    #gradx = 4*x**5                 + x*y**3*( 4*y + 5*rmaginv ) + y*x**3*(  8*y + 9*rmaginv )
+    #grady = 4*y**4*( y - rmaginv ) + x**4*(   4*y + 3*rmaginv ) + x*x*y*y*( 8*y + 3*rmaginv )
     # print('x = {0}; gradx={1}'.format(x,gradx))
+    
+    xsq       = x*x
+    ysq       = y*y
+    rmagsq    = xsq + ysq
+    rmaginv   = 1. / np.sqrt(rmagsq)
+    threeXsq  = 3*xsq
+    sixBrmag4 = 6*b*rmagsq*rmagsq
+
+    gradx = sixBrmag4*x + (3*threeXsq*x*y + ysq*5*x*y              ) * rmaginv
+    grady = sixBrmag4*y + (  threeXsq*xsq + ysq*(threeXsq - 4*ysq) ) * rmaginv
+
     return (-np.array([gradx, grady]).T + tilt) / tau
 
-# gradient of U(r) = r^2-2r^4cos(3(phi-pi/2))+r^6, which has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
-def rdot4(r, tau, tilt):
+# gradient of U(r) = r^2-b*r^4cos(3(phi-pi/2))+r^6, 
+# with b = 2, has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
+def rdot4(r, tau, tilt, b=2):
     
     x = r[:,0]
     y = r[:,1]
     
-    rmag  = np.sqrt(x*x+y*y)
+    xsq      = x*x
+    ysq      = y*y
+    rmagsq   = xsq + ysq
+    bRmaginv = b / np.sqrt(x*x+y*y)
+    threeXsq = 3*xsq
+    term     = 2+6*rmagsq*rmagsq
+
+    gradx  = x*y*bRmaginv*( 3*threeXsq +        5*ysq             ) + x*term
+    grady  = bRmaginv*(   xsq*threeXsq + threeXsq*ysq - 4*ysq*ysq ) + y*term
+
+    #gradx = 2*x*( 1 + 3*x**4   + 6*x*x*y*y   + 3*y**4 - 4*y**3/rmag + 9*y*rmag )
+    #grady = 2*(   y + 3*y*x**4 + 6*x*x*y*y*y + 3*y**5 - 4*y*y*rmag  + (3*x**4 + 7*x*x*y*y)/rmag)
     
-    gradx = 2*x*( 1 + 3*x**4   + 6*x*x*y*y   + 3*y**4 - 4*y**3/rmag + 9*y*rmag )
-    grady = 2*(   y - 3*y*x**4 + 6*x*x*y*y*y + 3*y**5 - 4*y*y*rmag  + (3*x**4 + 7*x*x*y*y)/rmag)
     return (-np.array([gradx, grady]).T + tilt) / tau
 
 
@@ -276,7 +298,7 @@ def getSigSeriesG(sts, nt, a, mu, sig):
     return (stsRepeated.T*gaus).T
 
 getTilt = lambda l,v: np.array([l]).transpose((1,2,0)).dot(v)
-def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6, rdotf = rdot):
+def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rdot):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
     # sigParams = parameters for getSigSeries function
@@ -309,7 +331,7 @@ def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6, rd
 
 def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6, rdotf=rdot):
     
-    rs      = fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts, rdotf) 
+    rs      = fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
 
     return np.array([getBasins(rs[:,t]) for t in tidxs]) # should vectorize getBasins...
