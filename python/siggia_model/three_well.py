@@ -49,7 +49,7 @@ class ThreeWell():
 
     '''
     def __init__(self, set_param_dict = {}, unset_param_prior_type_dict = {}, unset_param_prior_scale_dict = {}, 
-            default_value_params = [], rdot_idx = 0, seed = None):
+            default_value_params = [], rdot_idx = 0, rdot_depth = 2/3., seed = None):
         
         '''
             model_params       = values for all the parameters
@@ -63,11 +63,19 @@ class ThreeWell():
                                         3: integer,     [lower,upper]
         '''
         
-        #param_list = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a2','a3','b0','b1','b2','b3','nper']
-        rdot_funs  = [rdot, rdot3, rdot4]
-        self.rdotf = rdot_funs[rdot_idx]
+        # set the landscape
+        self.rdotf  = rdot
+        self.basinf = getBasins
+        if rdot_idx == 1:
+            self.rdotf  = lambda r, tau, tilt: rdot3(r, tau, tilt, self.rdot_depth)
+            self.basinf = getBasins
+        elif rdot_idx == 2:
+            self.rdotf  = lambda r, tau, tilt: rdot4(r, tau, tilt, self.rdot_depth)
+            self.basinf = lambda rs: getBasins4(rs, self.rdot_depth)
 
         np.random.seed(seed)
+        
+        #param_list = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a2','a3','b0','b1','b2','b3','nper']
 
         self.param_default_info = { 
                 # name:   [ index   , value        , prior_type, prior_params ] 
@@ -210,7 +218,7 @@ class ThreeWell():
     def log_likelihood(self, theta, x, y):
         
         params = self.get_params(theta)
-        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.rdotf)[:,:,:2]
+        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.rdotf, self,basinf)[:,:,:2]
     
         return -0.5*np.sum((y - model) ** 2 / params[15] )
 
@@ -237,11 +245,26 @@ def sigma1(f):
     return (np.tanh(nrm)*np.divide(f.T, nrm, out=np.zeros_like(f.T), where=nrm!=0)).T
 
 def getBasins(rs):
-    basins = np.zeros((rs.shape[0],3))
+    # for use with rdot and rdot3
+    basins = np.zeros(list(rs.shape[0:-1])+[3])
 
-    inb0   = rs[:,1] > sqrt3over3*np.abs(rs[:,0])
-    inb1   = ~inb0 & (rs[:,0]>0)
+    inb0   = rs[...,1] > sqrt3over3*np.abs(rs[...,0])
+    inb1   = ~inb0 & (rs[...,0]>0)
     inb2   = ~(inb0 | inb1)
+
+    basins[inb0,0] = 1
+    basins[inb1,1] = 1
+    basins[inb2,2] = 1
+    return basins
+
+def getBasins4(rs,b=2):
+    # for use with rdot4
+    basins = np.zeros(list(rs.shape[0:-1])+[4])
+
+    inb3   = rs[...,0]*rs[...,0] + rs[...,1]*rs[...,1] < (b-np.sqrt(b*b-3)) / 3.
+    inb0   = ~inb3 & (rs[...,1] > sqrt3over3*np.abs(rs[...,0]))
+    inb1   = ~(inb3 | inb0) & (rs[...,0]>0)
+    inb2   = ~(inb3 | inb0 | inb1)
 
     basins[inb0,0] = 1
     basins[inb1,1] = 1
@@ -340,22 +363,22 @@ def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rd
 
     return rs
 
-def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts=6, rdotf=rdot):
+def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts = 6, rdotf = rdot, basinf = getBasins):
     
     rs      = fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
 
-    return np.array([getBasins(rs[:,t]) for t in tidxs]) # should vectorize getBasins...
+    return basinf(rs).transpose((1,0,2))
 
-def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf=rdot):
+def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf=rdot, basinf=getBasins):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
-    return fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts, rdotf)
+    return fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts, rdotf, basinf)
 
 def fullTrajPosD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
     return fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
 
-def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot):
+def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot, basinf = getBasins):
 
     '''
     param indexes:
@@ -372,7 +395,7 @@ def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot):
     trajBasins  = fullTrajD(np.repeat(x[0:6],   int(params[16]), axis=1), 
                             np.repeat(x[6:12],  int(params[16]), axis=1), 
                             params[6:8], params[8:12], params[12:16], params[4:6], 
-                            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf)
+                            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf, basinf)
     
     trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
     return np.mean(trajBasinsS, axis=2)
