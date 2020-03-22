@@ -1,8 +1,8 @@
+from numba import jit
 import numpy as np
 import scipy as sc
 
 from numpy import linalg as linalg
-
 import os
 
 class ThreeWell():
@@ -82,7 +82,7 @@ class ThreeWell():
                 'nt'    : [ 0       , 100          , 3         , [10,1000]  ],
                 'dt'    : [ 1       , 1            , 2         , [1]        ],
                 'tau'   : [ 2       , 50           , 0         , [10,200]   ],
-                'diff'  : [ 3       , 0.001         , 2        , [0.001]    ],
+                'diff'  : [ 3       , 0.001        , 2         , [0.001]    ],
                 'xpos'  : [ 4       , 0            , 1         , [0,1]      ],
                 'ypos'  : [ 5       , 0            , 1         , [0,1]      ],
                 'a0'    : [ 6       , 1            , 1         , [0,2]      ],
@@ -154,6 +154,15 @@ class ThreeWell():
     log_prior_gauss   = lambda x, mu, sig: -(x-mu)**2/sig**2
     log_prior_exp     = lambda x, sc: -x/sc if x > 0 else -np.inf
 
+#    @jit(nopython=True)
+#    def log_prior_uniform(x, lower, upper): 
+#        return 0 if lower < x < upper else -np.inf
+#    @jit(nopython=True)
+#    def log_prior_gauss(x, mu, sig): 
+#        return -(x-mu)**2/sig**2
+#    @jit(nopython=True)
+#    def log_prior_exp(x, sc): 
+#        return -x/sc if x > 0 else -np.inf
 
     prior_func_names  = ['uniform'        , 'gaussian'      , 'exponential'        , 'integer'        ]
     log_prior_funcs   = [log_prior_uniform, log_prior_gauss , log_prior_exp        , log_prior_uniform]
@@ -184,10 +193,12 @@ class ThreeWell():
                 theta_info[k] = self.prior_func_names[self.theta_prior_types[z[0]]],self.theta_prior_scales[z[0]]
         return theta_info
     
+    # @jit(nopython=True)
     def log_prior(self, theta):
         prior_tot = 0
 
         for i in range(self.ntheta):
+            #print(theta[i])
             prior_tot += self.log_prior_funcs[self.theta_prior_types[i]](theta[i], *self.theta_prior_scales[i])
 
         return prior_tot
@@ -196,6 +207,18 @@ class ThreeWell():
         
         return [self.sampling_funcs[self.theta_prior_types[i]](*self.theta_prior_scales[i]) for i in range(self.ntheta)]
     
+    def resample_pos(self, pos):
+        
+        # checks an input position for prior satisfaction
+        # if not satisfied, resamples offending parameters
+        newpos = pos
+        for i in range(self.ntheta):
+            pscale = self.theta_prior_scales[i]
+            ptype  = self.theta_prior_types[i]
+            if ((ptype == 0 or ptype == 3)  and (pos[i] > pscale[1] or pos[i] < pscale[0])) or (ptype == 2 and pos[i] < 0):
+                newpos[i] = self.sampling_funcs[ptype](*pscale)
+        return newpos
+
     def make_theta(self, params):
         
         thidxs = np.array(self.theta_idxs)
@@ -207,6 +230,7 @@ class ThreeWell():
                 th[z[0]] = v
         return th
        
+    # @jit(nopython=True)
     def get_params(self, theta): 
         params = self.model_params
         
@@ -214,14 +238,16 @@ class ThreeWell():
             params[self.theta_idxs[i]] = theta[i]
 
         return params
-
+    
+    # @jit(nopython=True) # Set "nopython" mode for best performance, equivalent to @njit
     def log_likelihood(self, theta, x, y):
         
         params = self.get_params(theta)
-        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.rdotf, self,basinf)[:,:,:2]
+        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.rdotf, self.basinf)[:,:,:2]
     
         return -0.5*np.sum((y - model) ** 2 / params[15] )
 
+    # @jit(nopython=True)
     def log_probability(self, theta, x, y):
         
         lp = self.log_prior(theta)
@@ -237,13 +263,16 @@ class ThreeWell():
 sqrt3over3 = np.sqrt(3)/3
 # model running functions
 
+# @jit(nopython=True)
 def f(r):
     return 2*r + np.vstack([-2*r[:,0]*r[:,1] , r[:,1]**2 - r[:,0]**2]).T
 
+# @jit(nopython=True)
 def sigma1(f):
     nrm = np.linalg.norm(f,axis=1)
     return (np.tanh(nrm)*np.divide(f.T, nrm, out=np.zeros_like(f.T), where=nrm!=0)).T
 
+# @jit(nopython=True)
 def getBasins(rs):
     # for use with rdot and rdot3
     basins = np.zeros(list(rs.shape[0:-1])+[3])
@@ -257,6 +286,7 @@ def getBasins(rs):
     basins[inb2,2] = 1
     return basins
 
+# @jit(nopython=True)
 def getBasins4(rs,b=2):
     # for use with rdot4
     basins = np.zeros(list(rs.shape[0:-1])+[4])
@@ -271,11 +301,13 @@ def getBasins4(rs,b=2):
     basins[inb2,2] = 1
     return basins
 
+# @jit(nopython=True)
 def rdot(r, tau, tilt):
     return (sigma1(f(r) + tilt) - r) / tau
 
 # gradient of U(r) = -r^4cos(3(phi-pi/2))+b*r^6, 
 # with b=2/3, has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
+# @jit(nopython=True)
 def rdot3(r, tau, tilt, b = 2/3):
     
     x = r[:,0]
@@ -301,6 +333,7 @@ def rdot3(r, tau, tilt, b = 2/3):
 
 # gradient of U(r) = r^2-b*r^4cos(3(phi-pi/2))+r^6, 
 # with b = 2, has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
+# @jit(nopython=True)
 def rdot4(r, tau, tilt, b=2):
     
     x = r[:,0]
@@ -322,6 +355,7 @@ def rdot4(r, tau, tilt, b=2):
     return (-np.array([gradx, grady]).T + tilt) / tau
 
 
+# @jit(nopython=True)
 def getSigSeriesG(sts, nt, a, mu, sig):
 
     # sts has shape T x M
@@ -363,13 +397,15 @@ def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rd
 
     return rs
 
+# @jit(nopython=True)
 def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts = 6, rdotf = rdot, basinf = getBasins):
     
     rs      = fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
 
-    return basinf(rs).transpose((1,0,2))
+    return basinf(rs[:,tidxs]).transpose((1,0,2))
 
+# @jit(nopython=True)
 def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf=rdot, basinf=getBasins):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
     return fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts, rdotf, basinf)
@@ -378,6 +414,7 @@ def fullTrajPosD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
     return fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
 
+# @jit(nopython=True)
 def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot, basinf = getBasins):
 
     '''
