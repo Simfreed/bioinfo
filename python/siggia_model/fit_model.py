@@ -47,6 +47,7 @@ parser.add_argument("--backend",    type=str,    help="backend file name, within
 
 parser.add_argument('--reload_backend', dest='reload_backend', help="start from backend file in dir", action='store_true')
 parser.add_argument("--show_progress",   dest='show_progress',   help="show mcmc progress",    action='store_true')
+parser.add_argument("--run_in_serial",   dest='run_in_serial',   help="flag-- if true, don't use multiprocessing",    action='store_true')
 
 parser.add_argument("--moves",          type=int,   nargs='+',    help=str({i:moveList[i] for i in range(len(moveList))}), default =[0])
 parser.add_argument("--move_probs",     type=float, nargs='+', help="probabilities of selected moves", default=[1])
@@ -72,6 +73,7 @@ chain_len = args.chain_len
 
 # directories
 topdir  = '/projects/p30129/simonf/out' #/home/slf3348'
+topdir  = '/projects/p31095/simonf/out' #/home/slf3348'
 datdir  = '{0}/xenopus/data/siggia_mcmc'.format(topdir)
 outdir  = '{0}/{1}'.format(datdir,args.dir)
 os.makedirs(outdir, exist_ok = True)
@@ -106,7 +108,7 @@ labels = myw3.get_theta_labels()
 
 print('fitting params: {0}'.format(labels))
 print('fixed params: {0}'.format(myw3.get_fixed_params()))
-print('priors on sampling params:\n')
+print('\npriors on sampling params:\n')
 
 np.save('{0}/fixed_params.npy'.format(outdir), myw3.get_fixed_params()) 
 np.save('{0}/fit_params.npy'.format(outdir),   myw3.get_theta_labels()) 
@@ -125,8 +127,13 @@ if args.init_pos_file:
 else:
     theta_guess = myw3.random_parameter_set()
 
-print('\ninitializing near {0}'.format(theta_guess))
-pos = theta_guess + np.abs(1e-4*np.random.randn(nwalkers, ndim))
+print('\ninitializing near (if possible)\n')
+for k,v in zip(labels,theta_guess):
+    print('{0}:{1}'.format(k,v))
+
+pos = theta_guess + np.abs(1e-5*np.random.randn(nwalkers, ndim))
+for i in range(pos.shape[0]):
+    pos[i] = myw3.resample_pos(pos[i])
 
 # Set up the backend
 # Don't forget to clear it in case the file already exists
@@ -144,10 +151,14 @@ else:
 
 sampling_moves = tuple(((moveList[m], p) for (m,p) in zip(args.moves, args.move_probs)))
 print('using the following moves / probabilities: \n{0}'.format(sampling_moves))
-
-with Pool() as pool:
-    sampler = emcee.EnsembleSampler(nwalkers, ndim, myw3.log_probability, args=(x, y), pool=pool, backend=backend, moves = sampling_moves)
+#print(pos)
+if args.run_in_serial:
+    sampler = emcee.EnsembleSampler(nwalkers, ndim, myw3.log_probability, args=(x, y), backend=backend, moves = sampling_moves)
     sampler.run_mcmc(pos, chain_len, progress=args.show_progress);
+else:
+    with Pool() as pool:
+        sampler = emcee.EnsembleSampler(nwalkers, ndim, myw3.log_probability, args=(x, y), pool=pool, backend=backend, moves = sampling_moves)
+        sampler.run_mcmc(pos, chain_len, progress=args.show_progress);
 
 end     = time.time()
 elapsed = end - start
