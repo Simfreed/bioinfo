@@ -1,8 +1,9 @@
-from numba import jit
-import numpy as np
+#from numba import jit
+#import numpy as np
+import autograd.numpy as np
 import scipy as sc
 
-from numpy import linalg as linalg
+from autograd.numpy import linalg as linalg
 import os
 
 class ThreeWell():
@@ -68,7 +69,7 @@ class ThreeWell():
         self.basinf = getBasins
         if rdot_idx == 1:
             self.rdotf  = lambda r, tau, tilt: rdot3(r, tau, tilt, self.rdot_depth)
-            self.basinf = getBasins
+            self.basinf = getBasinsC
         elif rdot_idx == 2:
             self.rdotf  = lambda r, tau, tilt: rdot4(r, tau, tilt, self.rdot_depth)
             self.basinf = lambda rs: getBasins4(rs, self.rdot_depth)
@@ -232,7 +233,7 @@ class ThreeWell():
        
     # @jit(nopython=True)
     def get_params(self, theta): 
-        params = self.model_params
+        params = np.copy(self.model_params)
         
         for i in range(self.ntheta):
             params[self.theta_idxs[i]] = theta[i]
@@ -270,7 +271,8 @@ def f(r):
 # @jit(nopython=True)
 def sigma1(f):
     nrm = np.linalg.norm(f,axis=1)
-    return (np.tanh(nrm)*np.divide(f.T, nrm, out=np.zeros_like(f.T), where=nrm!=0)).T
+    return (np.tanh(nrm)*f.T/nrm).T
+    #return (np.tanh(nrm)*np.divide(f.T, nrm, out=np.zeros_like(f.T), where=nrm!=0)).T
 
 # @jit(nopython=True)
 def getBasins(rs):
@@ -300,6 +302,15 @@ def getBasins4(rs,b=2):
     basins[inb1,1] = 1
     basins[inb2,2] = 1
     return basins
+
+sigmoid2 = lambda x: 1/(1+np.exp(-100*x))
+def getBasinsC(rs):
+    
+    upperBasinP    = sigmoid2(rs[...,1] - sqrt3over3*np.abs(rs[...,0]))
+    lowerBasinP    = 1 - upperBasinP
+    posXp          = sigmoid2(rs[...,0])
+    return np.stack([upperBasinP, lowerBasinP*posXp, lowerBasinP*(1-posXp)], axis=2)
+
 
 # @jit(nopython=True)
 def rdot(r, tau, tilt):
@@ -365,8 +376,13 @@ def getSigSeriesG(sts, nt, a, mu, sig):
     stsRepeated = np.vstack([np.repeat(sts,nper,axis=0),np.zeros((nt-nper*6,sts.shape[1]))])
     return (stsRepeated.T*gaus).T
 
-getTilt = lambda l,v: np.array([l]).transpose((1,2,0)).dot(v)
-def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rdot):
+# v.shape = 1x2
+# l.shape = nt x M
+
+#getTilt = lambda l,v: np.array([l]).transpose((1,2,0)).dot(v)
+getTilt = lambda l,v: np.matmul(np.array([l]).transpose((1,2,0)),v)
+
+def fullTrajPosOld(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rdot):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
     # sigParams = parameters for getSigSeries function
@@ -388,14 +404,50 @@ def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rd
 
     rs      = np.zeros((sts1.shape[1], nt, r0.shape[0])) # M x nt x 2
     rs[:,0] = r0
-
+    
     for t in range(0, lag):
         rs[:,t+1] = rs[:,t] + dt*noises[t]
+        #rs.append(rs[t] + dt*noises[t])
 
     for t in range(lag, nt-1):
         rs[:,t+1] = rs[:,t] + dt*(rdotf(rs[:,t], tau, tilt[t]) + noises[t])
+        #rs.append(rs[t] + dt*(rdotf(rs[t], tau, tilt[t]) + noises[t]))
 
     return rs
+
+def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rdot):
+    
+    # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
+    # sigParams = parameters for getSigSeries function
+    # r0 = initial position on fate landscape 1x2
+    # noises = noise at each timestep for each data point --> nt x M x 2
+    # nt = number of timesteps (integer)
+    # dt = length of timesteps (float)
+    # tau = timescale (float)
+    
+    l0s = np.zeros((nt, sts1.shape[1])) + m0[0]
+    l1s = getSigSeriesG(sts1, nt, *m1[0:3]) # nt x M
+    l2s = getSigSeriesG(sts2, nt, *m2[0:3]) # nt x M
+    v0  = np.array([[np.cos(m0[1]), np.sin(m0[1])]])
+    v1  = np.array([[np.cos(m1[3]), np.sin(m1[3])]])
+    v2  = np.array([[np.cos(m2[3]), np.sin(m2[3])]])
+    
+    tilt = getTilt(l0s, v0) + getTilt(l1s, v1) + getTilt(l2s, v2)
+    # should be able to evaluate m(t) = l0v0+l1v1+l2v2 and feed that into rdot to save some computation time...
+
+    #rs      = np.zeros((sts1.shape[1], nt, r0.shape[0])) # M x nt x 2
+    #rs[:,0] = r0
+    #rs      = np.hstack([r0*np.ones((sts1.shape[1],1,r0.shape[0])),  np.zeros((sts1.shape[1], nt-1, r0.shape[0]))])
+    rs      = [r0*np.ones((sts1.shape[1],r0.shape[0]))]
+    for t in range(0, lag):
+        #rs[:,t+1] = rs[:,t] + dt*noises[t]
+        rs.append(rs[t] + dt*noises[t])
+
+    for t in range(lag, nt-1):
+        #rs[:,t+1] = rs[:,t] + dt*(rdotf(rs[:,t], tau, tilt[t]) + noises[t])
+        rs.append(rs[t] + dt*(rdotf(rs[t], tau, tilt[t]) + noises[t]))
+
+    return np.stack(rs,axis=1)
 
 # @jit(nopython=True)
 def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts = 6, rdotf = rdot, basinf = getBasins):
@@ -413,6 +465,10 @@ def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf=r
 def fullTrajPosD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
     return fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
+
+def fullTrajPosDold(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot):
+    noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
+    return fullTrajPosOld(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
 
 # @jit(nopython=True)
 def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot, basinf = getBasins):
