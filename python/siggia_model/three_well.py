@@ -50,7 +50,8 @@ class ThreeWell():
 
     '''
     def __init__(self, set_param_dict = {}, unset_param_prior_type_dict = {}, unset_param_prior_scale_dict = {}, 
-            default_value_params = [], rdot_idx = 0, rdot_depth = 2/3., seed = None):
+            default_value_params = [], log_param_list = ['tau', 'diff', 'b1', 'b2', 'c1', 'c2'], 
+            rdot_idx = 0, rdot_depth = 2/3., seed = None):
         
         '''
             model_params       = values for all the parameters
@@ -99,8 +100,23 @@ class ThreeWell():
                 'nper'  : [ 16      , 100          , 3         , [10,200]   ],
                 'yerr'  : [ 17      , 0.0005       , 2         , [0.0005]   ],
                 'lag'   : [ 18      , 0            , 3         , [0,20]     ]
-                } 
-        
+                }
+
+        self.log_param_default_info = {
+                'tau'    : [ 2      , np.log10(50) , 0          , [0,4]    ],
+                'diff'   : [ 3      , -3           , 0          , [-5,-1]    ],
+                'b1'     : [ 9      , np.log10(50) , 0          , [0,4]    ],
+                'b2'     : [ 10     , 1            , 0          , [0,4]    ],
+                'c1'     : [ 13     , np.log10(50) , 0          , [0,4]    ],
+                'c2'     : [ 14     , 1            , 0          , [0,4]    ]
+                }
+      
+        self.log_param_list = log_param_list
+        self.log_param_idxs = []
+        for k in log_param_list:
+            self.param_default_info[k] = self.log_param_default_info[k]
+            self.log_param_idxs.append(self.param_default_info[k][0])
+
         nparams = len(self.param_default_info)
 
         self.model_params       = np.zeros(nparams) + np.NaN
@@ -244,7 +260,7 @@ class ThreeWell():
     def log_likelihood(self, theta, x, y):
         
         params = self.get_params(theta)
-        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.rdotf, self.basinf)[:,:,:2]
+        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:2]
     
         return -0.5*np.sum((y - model) ** 2 / params[15] )
 
@@ -471,7 +487,7 @@ def fullTrajPosDold(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = r
     return fullTrajPosOld(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
 
 # @jit(nopython=True)
-def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot, basinf = getBasins):
+def getTrajBasinProbabilities(x, params, nstg, log_param_idxs = [], rdotf = rdot, basinf = getBasins):
 
     '''
     param indexes:
@@ -485,6 +501,9 @@ def getTrajBasinProbabilities(x, params, nstg, rdotf = rdot, basinf = getBasins)
     lag : 18
     '''
     
+    for i in log_param_idxs:
+        params[i] = 10.**params[i]
+
     trajBasins  = fullTrajD(np.repeat(x[0:6],   int(params[16]), axis=1), 
                             np.repeat(x[6:12],  int(params[16]), axis=1), 
                             params[6:8], params[8:12], params[12:16], params[4:6], 
