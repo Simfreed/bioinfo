@@ -266,7 +266,7 @@ class ThreeWell():
         params = self.get_params(theta)
         model  = getTrajBasinProbabilities(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:2]
     
-        return -0.5*np.sum((y - model) ** 2 / params[15] )
+        return -0.5*np.sum((y - model) ** 2 / params[17] )
 
     # @jit(nopython=True)
     def log_probability(self, theta, x, y):
