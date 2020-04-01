@@ -51,7 +51,7 @@ class ThreeWell():
     '''
     def __init__(self, set_param_dict = {}, unset_param_prior_type_dict = {}, unset_param_prior_scale_dict = {}, 
             default_value_params = [], log_param_list = ['tau', 'diff', 'b1', 'b2', 'c1', 'c2'], 
-            rdot_idx = 0, rdot_depth = 2/3., seed = None):
+            rdot_idx = 0, rdot_depth = 2./3., basinf_idx = 0, seed = None):
         
         '''
             model_params       = values for all the parameters
@@ -66,14 +66,15 @@ class ThreeWell():
         '''
         
         # set the landscape
+        basin3fs    = [getBasins, getBasinsC]
         self.rdotf  = rdot
-        self.basinf = getBasins
+        self.basinf = basin3fs[basinf_idx]
         if rdot_idx == 1:
-            self.rdotf  = lambda r, tau, tilt: rdot3(r, tau, tilt, self.rdot_depth)
-            self.basinf = getBasinsC
+            #self.rdotf  = lambda r, tau, tilt: rdot3(r, tau, tilt, rdot_depth)
+            self.rdotf  = rdot3
         elif rdot_idx == 2:
-            self.rdotf  = lambda r, tau, tilt: rdot4(r, tau, tilt, self.rdot_depth)
-            self.basinf = lambda rs: getBasins4(rs, self.rdot_depth)
+            self.rdotf  = lambda r, tau, tilt: rdot4(r, tau, tilt, rdot_depth)
+            self.basinf = lambda rs: getBasins4(rs, rdot_depth)
 
         np.random.seed(seed)
         
@@ -144,8 +145,8 @@ class ThreeWell():
         self.ntheta = len(self.theta_idxs)
 
         # some logic specific to uniformly distributed parameters with units of time
-        # unless otherwise specified, these priors should be *defaulted* to span the trajectory timescale
-        time_params =['b1','b2','c1','c2']
+        # unless otherwise specified, these priors should be *defaulted* to be on order of magnitude of the trajectory timescale
+        time_params =['tau','b1','b2','c1','c2']
         if 'nt' in set_param_dict or 'nt' in default_value_params:
             nt = self.model_params[self.param_default_info['nt'][0]]
             for param in time_params:
@@ -153,7 +154,10 @@ class ThreeWell():
                 if len(idxs) > 0:
                     idx = idxs[0]
                     if param not in unset_param_prior_scale_dict and self.theta_prior_types[idx] in [0,3]:
-                        self.theta_prior_scales[idx][1] = nt 
+                        if param in self.log_param_list:
+                            self.theta_prior_scales[idx][1] = np.log10(2*nt)
+                        else:
+                            self.theta_prior_scales[idx][1] = 2*nt 
 
 
         # param_inits = self.random_parameter_set()
@@ -336,7 +340,6 @@ def rdot(r, tau, tilt):
 # with b=2/3, has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
 # @jit(nopython=True)
 def rdot3(r, tau, tilt, b = 2/3):
-    
     x = r[:,0]
     y = r[:,1]
 
@@ -344,7 +347,6 @@ def rdot3(r, tau, tilt, b = 2/3):
     #rmaginv  = 1. / np.sqrt(x*x+y*y)
     #gradx = 4*x**5                 + x*y**3*( 4*y + 5*rmaginv ) + y*x**3*(  8*y + 9*rmaginv )
     #grady = 4*y**4*( y - rmaginv ) + x**4*(   4*y + 3*rmaginv ) + x*x*y*y*( 8*y + 3*rmaginv )
-    # print('x = {0}; gradx={1}'.format(x,gradx))
     
     xsq       = x*x
     ysq       = y*y
@@ -355,7 +357,7 @@ def rdot3(r, tau, tilt, b = 2/3):
 
     gradx = sixBrmag4*x + (3*threeXsq*x*y + ysq*5*x*y              ) * rmaginv
     grady = sixBrmag4*y + (  threeXsq*xsq + ysq*(threeXsq - 4*ysq) ) * rmaginv
-
+    
     return (-np.array([gradx, grady]).T + tilt) / tau
 
 # gradient of U(r) = r^2-b*r^4cos(3(phi-pi/2))+r^6, 

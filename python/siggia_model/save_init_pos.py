@@ -1,13 +1,13 @@
 import numpy as np
 
 outdir = '/projects/p30129/simonf/out/xenopus/data/siggia_mcmc'
-rdot_guess = {
+guess = {
     'nt':100,
     'dt':1,
     'tau':200,
     'nper':100,
     'lag':16,
-    'diff':0.0001,
+    'diff':0.0001001,
     'xpos':0,
     'ypos':0,
     'a0':1,
@@ -20,9 +20,14 @@ rdot_guess = {
     'c1':50,
     'c2':20,
     'c3':7*np.pi/6,
-    'yerr':0.0005
+    'yerr':0.01
 }
-np.save('{0}/rdot_guess.npy'.format(outdir), rdot_guess) 
+
+log_param_list = ['tau','diff','b1','b2','c1','c2']
+for k in log_param_list:
+    guess[k] = np.log10(guess[k])
+
+np.save('{0}/rdot_guess_log.npy'.format(outdir), guess) 
 
 # guess for rdot3
 nt=2000

@@ -38,12 +38,11 @@ moveList =[
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--dir",        type=str,   help="output subdirectory", default='mcmc{0}'.format(time.strftime('%m-%d-%y_%H:%M')))
-parser.add_argument("--niter",      type=int,   help="number of iterations for dual_annealing", default=10)
 parser.add_argument("--nwalkers",   type=int,   help="mcmc nwalkers",    default=32)
 parser.add_argument("--chain_len",  type=int,   help="mcmc len",    default=100)
 parser.add_argument("--thin",       type=int,   help="output chain every k timesteps",    default=1)
 parser.add_argument("--seed",       type=int,   help="the seed of course",    default=0)
-parser.add_argument("--backend",    type=str,    help="backend file name, within dir", default="sampler_backend")
+parser.add_argument("--backend",    type=str,   help="backend file name, within dir", default="sampler_backend")
 
 parser.add_argument('--reload_backend', dest='reload_backend', help="start from backend file in dir", action='store_true')
 parser.add_argument("--show_progress",   dest='show_progress',   help="show mcmc progress",    action='store_true')
@@ -53,21 +52,22 @@ parser.add_argument("--moves",          type=int,   nargs='+',    help=str({i:mo
 parser.add_argument("--move_probs",     type=float, nargs='+', help="probabilities of selected moves", default=[1])
 
 parser.add_argument("--fixed_params",       type=str, nargs='+', help="list of params to provide fixed values for",     default = [])
-parser.add_argument("--default_params",     type=str, nargs='+', help="list of params to use default values for",       default = ['nt','dt','tau','nper'])
+parser.add_argument("--default_params",     type=str, nargs='+', help="list of params to use default values for",       default = [])
 parser.add_argument("--prior_type_params",  type=str, nargs='+', help="list of params to change the default prior for", default = [])
 parser.add_argument("--prior_scale_params", type=str, nargs='+', help="list of params to use default values for",       default = [])
 
 parser.add_argument("--fixed_values",   type=float, nargs='+', help="values of fixed params",     default = [])
 parser.add_argument("--prior_types",    type=int,   nargs='+', help="prior types, 0: uniform, 1: gaussian, 2: exponential, 3: integer", default = [])
 parser.add_argument("--prior_scales",   type=str, nargs='+', 
-        help="list of prior scales-- format: comma between two numbers for the same param, space between numbers for different params", default = [])
+        help="list of prior scales-- format: comma between two numbers for the same param, space between numbers for different params", 
+        default = [])
 parser.add_argument("--rdot_type",       type=int, help="dynamics_func: 0 = siggia; 1 = polar, three well; 2 = polar, four well", default = 0)
-parser.add_argument("--init_pos_file",   type=str, help="dict with sampling initial position data", default = 'rdot_guess.npy')
+parser.add_argument("--basin_type",      type=int, help="0: discrete, 1: continuous", default = 0)
+parser.add_argument("--init_pos_file",   type=str, help="dict with sampling initial position data", default = '')
 
 args = parser.parse_args()
 
 seed      = args.seed 
-niter     = args.niter
 nwalkers  = args.nwalkers
 chain_len = args.chain_len
 
@@ -102,7 +102,7 @@ prior_type_dict  = {k:v for k,v in zip(args.prior_type_params, args.prior_types)
 
 myw3   = w3.ThreeWell(set_param_dict = fixed_param_dict,   default_value_params = default_params,
         unset_param_prior_scale_dict = prior_scale_dict, unset_param_prior_type_dict = prior_type_dict, seed = args.seed,
-        rdot_idx = args.rdot_type)
+        rdot_idx = args.rdot_type, basinf_idx = args.basin_type)
 
 labels = myw3.get_theta_labels()
 
@@ -110,11 +110,16 @@ print('fitting params: {0}'.format(labels))
 print('fixed params: {0}'.format(myw3.get_fixed_params()))
 print('\npriors on sampling params:\n')
 
+logfile.write('fitting params: {0}'.format(labels))
+logfile.write('fixed params: {0}'.format(myw3.get_fixed_params()))
+logfile.write('\npriors on sampling params:\n')
+
 np.save('{0}/fixed_params.npy'.format(outdir), myw3.get_fixed_params()) 
 np.save('{0}/fit_params.npy'.format(outdir),   myw3.get_theta_labels()) 
 
 for k,v in myw3.get_prior_info().items():
     print('{0}:{1}'.format(k,v))
+    logfile.write('{0}:{1}'.format(k,v))
 
 logfile.write('\nhammer time')
 ndim = myw3.ntheta
@@ -128,8 +133,10 @@ else:
     theta_guess = myw3.random_parameter_set()
 
 print('\ninitializing near (if possible)\n')
+logfile.write('\ninitializing near (if possible)\n')
 for k,v in zip(labels,theta_guess):
     print('{0}:{1}'.format(k,v))
+    logfile.write('{0}:{1}'.format(k,v))
 
 pos = theta_guess + np.abs(1e-5*np.random.randn(nwalkers, ndim))
 for i in range(pos.shape[0]):
@@ -151,7 +158,7 @@ else:
 
 sampling_moves = tuple(((moveList[m], p) for (m,p) in zip(args.moves, args.move_probs)))
 print('using the following moves / probabilities: \n{0}'.format(sampling_moves))
-#print(pos)
+logfile.write('using the following moves / probabilities: \n{0}'.format(sampling_moves))
 if args.run_in_serial:
     sampler = emcee.EnsembleSampler(nwalkers, ndim, myw3.log_probability, args=(x, y), backend=backend, moves = sampling_moves)
     sampler.run_mcmc(pos, chain_len, progress=args.show_progress);
@@ -163,7 +170,7 @@ else:
 end     = time.time()
 elapsed = end - start
 
-logfile.write('\nsampling with {0} walkers for {1} steps took {2} seconds (niter = {3})\n'.format(nwalkers, chain_len, elapsed, niter))
+logfile.write('\nsampling with {0} walkers for {1} steps took {2} seconds)\n'.format(nwalkers, chain_len, elapsed))
 logfile.write("Final size: {0}".format(backend.iteration))
 
 samples = sampler.get_chain(thin=args.thin)
