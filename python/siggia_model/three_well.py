@@ -155,9 +155,9 @@ class ThreeWell():
                     idx = idxs[0]
                     if param not in unset_param_prior_scale_dict and self.theta_prior_types[idx] in [0,3]:
                         if param in self.log_param_list:
-                            self.theta_prior_scales[idx][1] = np.log10(2*nt)
+                            self.theta_prior_scales[idx][1] = np.log10(5*nt)
                         else:
-                            self.theta_prior_scales[idx][1] = 2*nt 
+                            self.theta_prior_scales[idx][1] = 5*nt 
 
 
         # param_inits = self.random_parameter_set()
