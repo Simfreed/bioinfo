@@ -44,7 +44,11 @@ parser.add_argument("--thin",       type=int,   help="output chain every k times
 parser.add_argument("--seed",       type=int,   help="the seed of course",    default=0)
 parser.add_argument("--backend",    type=str,   help="backend file name, within dir", default="sampler_backend")
 
-parser.add_argument('--reload_backend', dest='reload_backend', help="start from backend file in dir", action='store_true')
+parser.add_argument("--prev_backend_file", type=str, help="backend filename to continue from, but not (necessarily) to rewrite", 
+        default='')
+
+parser.add_argument('--reload_backend', dest='reload_backend', help="start from backend file in the same dir (and rewrite all those files)", 
+        action='store_true')
 parser.add_argument("--show_progress",   dest='show_progress',   help="show mcmc progress",    action='store_true')
 parser.add_argument("--run_in_serial",   dest='run_in_serial',   help="flag-- if true, don't use multiprocessing",    action='store_true')
 
@@ -125,36 +129,52 @@ logfile.write('\nhammer time')
 ndim = myw3.ntheta
 #pos  = myw3.random_parameter_set() + np.abs(1e-4*np.random.randn(nwalkers, ndim))
 
-# guess for siggia version of rdot
-if args.init_pos_file:
-    params_guess = np.load('{0}/{1}'.format(datdir, args.init_pos_file), allow_pickle=True).item()
-    theta_guess = myw3.make_theta(params_guess)
-else:
-    theta_guess = myw3.random_parameter_set()
-
-print('\ninitializing near (if possible)\n')
-logfile.write('\ninitializing near (if possible)\n')
-for k,v in zip(labels,theta_guess):
-    print('{0}:{1}'.format(k,v))
-    logfile.write('{0}:{1}'.format(k,v))
-
-pos = theta_guess + np.abs(1e-5*np.random.randn(nwalkers, ndim))
-for i in range(pos.shape[0]):
-    pos[i] = myw3.resample_pos(pos[i])
-
-# Set up the backend
-# Don't forget to clear it in case the file already exists
-filename = "{0}/{1}.h5".format(outdir, args.backend)
-backend  = emcee.backends.HDFBackend(filename)
+#########################################################
+# initialization of the sampler...
+# possibilities: 
+# (a) new sampling (==> new backend)
+#    (i)  random position  (args.init_pos_file = '')
+#    (ii) guessed position (args.init_pos_file = '<path_to_dict.npy>')
+# (b) continued sampling
+#    (i) re-using same h5 file (args.reload_backend = True)
+#    (ii) new h5 file (args.prev_backend_file = True, args.reload_backend = False)
 
 # Initialize the sampler
 start = time.time()
+
+# Set up the backend
+backend  = emcee.backends.HDFBackend("{0}/{1}.h5".format(outdir, args.backend))
 
 if args.reload_backend:
     logfile.write("Initial size: {0}".format(backend.iteration))
     pos=None
 else:
+    # clear it
     backend.reset(nwalkers, ndim)
+    
+    if args.prev_backend_file:
+        prev_backend = emcee.backends.HDFBackend(args.prev_backend_file)
+        pos          = prev_backend.get_last_sample().coords[0:nwalkers]
+        logfile.write("Starting from iteration: {0}".format(prev_backend.iteration))
+    else:
+        if args.init_pos_file:
+            params_guess = np.load('{0}/{1}'.format(datdir, args.init_pos_file), allow_pickle=True).item()
+            theta_guess = myw3.make_theta(params_guess)
+        else:
+            theta_guess = myw3.random_parameter_set()
+        
+        print('\ninitializing near (if possible)\n')
+        logfile.write('\ninitializing near (if possible)\n')
+        for k,v in zip(labels,theta_guess):
+            print('{0}:{1}'.format(k,v))
+            logfile.write('{0}:{1}'.format(k,v))
+
+        pos = theta_guess + np.abs(1e-5*np.random.randn(nwalkers, ndim))
+    for i in range(pos.shape[0]):
+        pos[i] = myw3.resample_pos(pos[i])
+    print('\npos.shape={0}'.format(pos.shape))
+
+################################################################
 
 sampling_moves = tuple(((moveList[m], p) for (m,p) in zip(args.moves, args.move_probs)))
 print('using the following moves / probabilities: \n{0}'.format(sampling_moves))
