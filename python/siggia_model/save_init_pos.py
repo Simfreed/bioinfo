@@ -1,6 +1,6 @@
 import numpy as np
 
-outdir = '/projects/p30129/simonf/out/xenopus/data/siggia_mcmc'
+outdir = '/projects/p31095/simonf/out/xenopus/data/siggia_mcmc'
 guess = {
     'nt':100,
     'dt':1,
@@ -31,7 +31,7 @@ np.save('{0}/rdot_guess_log.npy'.format(outdir), guess)
 
 # guess for rdot3
 nt=2000
-rdot3guess = {
+guess = {
     'nt':nt,
     'dt':0.1,
     'tau':50,
@@ -52,7 +52,9 @@ rdot3guess = {
     'c3':7*np.pi/6,
     'yerr':0.01
 }
-np.save('{0}/rdot3_guess.npy'.format(outdir), rdot3guess) 
+for k in log_param_list:
+    guess[k] = np.log10(guess[k])
+np.save('{0}/rdot3_guess_log.npy'.format(outdir), guess) 
 
 # guess for rdot4
 b=2
@@ -60,7 +62,7 @@ b=2
 #rdot = lambda r,tau,tilt: w3.rdot(r,tau,tilt)
 # for rdot3, still doesn't work 
 nt=4000
-paramDictG = {
+guess = {
     'nt':nt,
     'dt':0.1,
     'tau':200,
@@ -81,4 +83,6 @@ paramDictG = {
     'c3':7*np.pi/6,
     'yerr':0.01
 }
-np.save('{0}/rdot4_guess.npy'.format(outdir), rdot3guess) 
+for k in log_param_list:
+    guess[k] = np.log10(guess[k])
+np.save('{0}/rdot4_guess_log.npy'.format(outdir), guess) 
