@@ -309,7 +309,7 @@ def getBasins(rs):
     return basins
 
 # @jit(nopython=True)
-def getBasins4(rs,b=2):
+def getBasins4(rs, b=2):
     # for use with rdot4
     basins = np.zeros(list(rs.shape[0:-1])+[4])
 
@@ -331,6 +331,17 @@ def getBasinsC(rs):
     posXp          = sigmoid2(rs[...,0])
     return np.stack([upperBasinP, lowerBasinP*posXp, lowerBasinP*(1-posXp)], axis=2)
 
+def getBasins4C(rs, b=2):
+    
+    midBasinP     = sigmoid2((b-np.sqrt(b*b-3)) / 3. - (rs[...,0]*rs[...,0] + rs[...,1]*rs[...,1])) 
+    notMidBasinP  = 1 - midBasinP
+
+    upperBasinP    = sigmoid2(rs[...,1] - sqrt3over3*np.abs(rs[...,0]))
+    lowerBasinP    = 1 - upperBasinP
+    
+    posXp          = sigmoid2(rs[...,0])
+    
+    return np.stack([upperBasinP*notMidBasinP, lowerBasinP*posXp*notMidBasinP, lowerBasinP*(1-posXp)*notMidBasinP, midBasinP], axis=2)
 
 # @jit(nopython=True)
 def rdot(r, tau, tilt):
