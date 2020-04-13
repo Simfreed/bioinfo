@@ -67,7 +67,7 @@ guess = {
     'dt':0.1,
     'tau':200,
     'nper':100,
-    'lag':int(0.4*nt),
+    'lag':int(0.01*nt),
     'diff':0.02,
     'xpos':0,
     'ypos':0,

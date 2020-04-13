@@ -66,15 +66,18 @@ class ThreeWell():
         '''
         
         # set the landscape
-        basin3fs    = [getBasins, getBasinsC]
+        basin3fs    = [getBasins,  getBasinsC]
         self.rdotf  = rdot
         self.basinf = basin3fs[basinf_idx]
         if rdot_idx == 1:
             #self.rdotf  = lambda r, tau, tilt: rdot3(r, tau, tilt, rdot_depth)
             self.rdotf  = rdot3
         elif rdot_idx == 2:
-            self.rdotf  = lambda r, tau, tilt: rdot4(r, tau, tilt, rdot_depth)
-            self.basinf = lambda rs: getBasins4(rs, rdot_depth)
+            self.rdotf  = rdot4 #lambda r, tau, tilt: rdot4(r, tau, tilt, rdot_depth)
+            if basinf_idx == 0: 
+                self.basinf = getBasins4 #lambda rs: getBasins4(rs, rdot_depth)
+            else:
+                self.basinf = getBasins4C #lambda rs: getBasins4C(rs, rdot_depth)
 
         np.random.seed(seed)
         
@@ -264,7 +267,7 @@ class ThreeWell():
     def log_likelihood(self, theta, x, y):
         
         params = self.get_params(theta)
-        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:2]
+        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
     
         return -0.5*np.sum((y - model) ** 2 / params[17] )
 

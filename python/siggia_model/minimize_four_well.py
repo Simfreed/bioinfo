@@ -15,9 +15,11 @@ from importlib import reload
 from autograd import grad, jacobian, hessian
 import autograd.numpy as np
 
-# directories
-datdir  = '/Users/simonfreedman/cqub/xenopus/data'
-outdir = '/Users/simonfreedman/cqub/xenopus/plots'
+# directories 
+topdir  = '/projects/p31095/simonf/out' #/home/slf3348'
+datdir  = '{0}/xenopus/data/siggia_mcmc'.format(topdir)
+outf1   = '{0}/xenopus/trust_constr_fit_polar4.npy'.format(topdir)
+outf2   = '{0}/xenopus/trust_constr_fit_polar4_x.npy'.format(topdir)
 
 stagestrs = ['9','10','10.5','11','12','13']
 
@@ -181,8 +183,8 @@ for i in range(myw3.ntheta):
 print('fitting')
 fit_soln_all = minimize(nlpost, x0=theta00, jac = dnlpost, hess = ddnlpost, 
                          bounds  = boundsarr, method='trust-constr')
-np.save('{0}/tc_fit_x.npy'.format(datdir),fit_soln_all.x)
-np.save('{0}/tc_fit.npy'.format(datdir),  fit_soln_all)
+np.save(outf2, fit_soln_all.x)
+np.save(outf1, fit_soln_all)
 
 print('done')
 

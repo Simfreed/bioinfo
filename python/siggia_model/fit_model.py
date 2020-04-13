@@ -66,6 +66,7 @@ parser.add_argument("--prior_scales",   type=str, nargs='+',
         help="list of prior scales-- format: comma between two numbers for the same param, space between numbers for different params", 
         default = [])
 parser.add_argument("--rdot_type",       type=int, help="dynamics_func: 0 = siggia; 1 = polar, three well; 2 = polar, four well", default = 0)
+parser.add_argument("--rdot_depth",      type=float, help="b parameter for rdot function", default = -1)
 parser.add_argument("--basin_type",      type=int, help="0: discrete, 1: continuous", default = 0)
 parser.add_argument("--init_pos_file",   type=str, help="dict with sampling initial position data", default = '')
 
@@ -87,14 +88,15 @@ logfile = open("{0}/log.txt".format(outdir), "a+")
 np.save('{0}/args.npy'.format(outdir), args) 
 
 # Load the training data
-predsS  = np.load('{0}/log_reg_pca_predss.npy'.format(datdir))
+nprobs  = 4 if args.rdot_type==2 else 3
+predsS  = np.load('{0}/log_reg_pca_preds{1}.npy'.format(datdir, nprobs))
 nrep    = predsS.shape[1] 
 
 bmpOn = np.vstack([ np.ones(6) , np.zeros(6) , np.ones(6)])
 tgfOn = np.vstack([ np.zeros(6), np.zeros(6) , np.ones(6)])
 
 x = np.hstack([np.repeat(bmpOn,nrep,axis=0),np.repeat(tgfOn,nrep,axis=0)]).T
-y = predsS.reshape((9,6,3))[:,:,:2]
+y = predsS.reshape((9,6,nprobs))[:,:,:(nprobs-1)]
 
 # initialize the model
 # prior_scales   = {'yerr':[0.0005], 'diff':[0.05], 'a0':[0,5], 'b0':[0,5], 'a2':[0,10], 'b2':[0,10]}
@@ -104,9 +106,16 @@ fixed_param_dict = {k:v for k,v in zip(args.fixed_params, args.fixed_values)}
 prior_scale_dict = {k:v for k,v in zip(args.prior_scale_params, prior_scales)}
 prior_type_dict  = {k:v for k,v in zip(args.prior_type_params, args.prior_types)}
 
+if args.rdot_depth > 0:
+    rdot_b = args.rdot_depth
+elif args.rdot_type == 2:
+    rdot_b = 2
+else:
+    rdot_b = 2./3.
+
 myw3   = w3.ThreeWell(set_param_dict = fixed_param_dict,   default_value_params = default_params,
         unset_param_prior_scale_dict = prior_scale_dict, unset_param_prior_type_dict = prior_type_dict, seed = args.seed,
-        rdot_idx = args.rdot_type, basinf_idx = args.basin_type)
+        rdot_idx = args.rdot_type, basinf_idx = args.basin_type, rdot_depth = rdot_b)
 
 labels = myw3.get_theta_labels()
 
