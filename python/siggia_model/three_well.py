@@ -316,7 +316,7 @@ def getBasins4(rs, b=2):
     # for use with rdot4
     basins = np.zeros(list(rs.shape[0:-1])+[4])
 
-    inb3   = rs[...,0]*rs[...,0] + rs[...,1]*rs[...,1] < (b-np.sqrt(b*b-3)) / 3.
+    inb3   = (rs[...,0]*rs[...,0] + rs[...,1]*rs[...,1]) < (b-np.sqrt(b*b-3)) / 3.
     inb0   = ~inb3 & (rs[...,1] > sqrt3over3*np.abs(rs[...,0]))
     inb1   = ~(inb3 | inb0) & (rs[...,0]>0)
     inb2   = ~(inb3 | inb0 | inb1)
@@ -324,6 +324,7 @@ def getBasins4(rs, b=2):
     basins[inb0,0] = 1
     basins[inb1,1] = 1
     basins[inb2,2] = 1
+    basins[inb3,3] = 1
     return basins
 
 sigmoid2 = lambda x: 1/(1+np.exp(-100*x))
