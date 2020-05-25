@@ -16,10 +16,11 @@ from autograd import grad, jacobian, hessian
 import autograd.numpy as np
 
 # directories 
+yerr    = 0.005
+
 topdir  = '/projects/p31095/simonf/out' #/home/slf3348'
 datdir  = '{0}/xenopus/data/siggia_mcmc'.format(topdir)
-outf1   = '{0}/xenopus/trust_constr_fit_polar4.npy'.format(topdir)
-outf2   = '{0}/xenopus/trust_constr_fit_polar4_x.npy'.format(topdir)
+outf1   = '{0}/xenopus/trust_constr_fits/polar4_yerr{1}.npy'.format(topdir,yerr)
 
 stagestrs = ['9','10','10.5','11','12','13']
 
@@ -37,7 +38,7 @@ xtest = x[:,::3]
 
 b=2
 rdotf = lambda r,tau,tilt: w3.rdot4(r,tau,tilt, b)
-basinf = w3.getBasins4
+basinf = w3.getBasins4C
 #rdot = lambda r,tau,tilt: w3.rdot(r,tau,tilt)
 # for rdot3, still doesn't work
 nt=4000
@@ -60,7 +61,7 @@ pd = {
     'c1':0.7*nt,
     'c2':0.4*nt,
     'c3':7*np.pi/6,
-    'yerr':0.01
+    'yerr':yerr
 }
 
 myw3    = w3.ThreeWell(set_param_dict={k:pd[k] for k in ['nt','dt','lag','nper','yerr']},
@@ -93,7 +94,7 @@ trajPosNpts  = lambda th, x, nstg: w3.fullTrajD(np.repeat(x[0:6],  pd['nper'], a
                                        np.repeat(x[6:12], pd['nper'], axis=1),
                                        th[4:6], th[6:10], th[10:14], th[2:4], th[1],
                                        pd['nt'], pd['dt'], th[0], pd['lag'], nstg,
-                                 rdotf = rdotf, basinf = w3.getBasins4C)
+                                 rdotf = rdotf, basinf = basinf)
 
 trajFull = lambda x, pd: w3.fullTrajPosD(x[0:6], x[6:12],
                      [pd['a0'], pd['a3']],
@@ -183,7 +184,6 @@ for i in range(myw3.ntheta):
 print('fitting')
 fit_soln_all = minimize(nlpost, x0=theta00, jac = dnlpost, hess = ddnlpost, 
                          bounds  = boundsarr, method='trust-constr')
-np.save(outf2, fit_soln_all.x)
 np.save(outf1, fit_soln_all)
 
 print('done')
