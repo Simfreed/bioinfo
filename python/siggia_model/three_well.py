@@ -51,7 +51,7 @@ class ThreeWell():
     '''
     def __init__(self, set_param_dict = {}, unset_param_prior_type_dict = {}, unset_param_prior_scale_dict = {}, 
             default_value_params = [], log_param_list = ['tau', 'diff', 'b1', 'b2', 'c1', 'c2'], 
-            mode = '2d3w_Sh', rdot_depth = None, seed = None):
+            mode = '2d3w_S_h', rdot_depth = None, seed = None):
         
         '''
             model_params       = values for all the parameters
@@ -72,7 +72,7 @@ class ThreeWell():
         '''
         
         # need to set: rdotf, basinf, and basin_probsf based on "mode" variable
-        self.rdotf          = eval('rdot_{0}'.format(mode[0:-1]))
+        self.rdotf          = eval('rdot_{0}'.format(mode[0:-2]))
         self.basinf         = eval('basins_{0}'.format(mode.replace('_S','')))
         self.basin_probsf   = eval('basin_probs_{0}'.format(mode[0:2])) 
         
@@ -130,7 +130,7 @@ class ThreeWell():
         self.theta_idxs         = []
         self.theta_prior_types  = []
         self.theta_prior_scales = []
-        theta_idx_dict          = {}
+        
         for k,v in self.param_default_info.items():
             if k in set_param_dict:
                 # param is fixed by user
@@ -348,6 +348,12 @@ def basins_1d2w_h(rs):
     basins[inb1,1] = 1
     
     return basins
+
+def basins_1d2w_s(rs):
+    # for use with rdot_1d2w
+
+    right_basin_p  = sigmoid2(rs) 
+    return np.stack([right_basin_p, 1 - right_basin_p])
 
 sigmoid2 = lambda x: 1/(1+np.exp(-100*x))
 def basins_2d3w_s(rs):
@@ -570,7 +576,7 @@ def basin_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, npts = 6, rdotf = r
     
     rs      = pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
-    return basinf(rs[:,tidxs]).transpose(1,0,2)
+    return basinf(rs[:,tidxs]).transpose((1,0,2))
 
 # @jit(nopython=True)
 def basin_traj_diff_1d(sts, m0, m1, x0, dff, nt, dt, tau, lag, npts=6, rdotf = rdot_1d2w, basinf = basins_1d2w_h):
