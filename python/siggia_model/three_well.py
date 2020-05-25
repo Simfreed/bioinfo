@@ -275,10 +275,11 @@ class ThreeWell():
     def log_likelihood(self, theta, x, y):
         
         params = self.get_params(theta)
-        model  = basin_probs_2D(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
-        model  = self.basin_probsf(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
+        #model  = self.basin_probsf(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
+        basins = self.basin_probsf(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
+        errs   = np.array([[y[i]-basins[i,j] for i in range(y.shape[0])] for j in range(basins.shape[1])])
     
-        return -0.5*np.sum((y - model) ** 2 / params[17] )
+        return -0.5*np.sum(errs ** 2) / (params[16]*params[17]) 
 
     # @jit(nopython=True)
     def log_probability(self, theta, x, y):
@@ -499,7 +500,7 @@ def pos_traj_diff(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdo
 
 
 # @jit(nopython=True)
-def basin_probs_2d(x, params, nstg, log_param_idxs = [], rdotf = rdot_2d3w_S, basinf = basins_2d3w_h):
+def basin_probs_2d(x, params, nstg, log_param_idxs = [], rdotf = rdot_2d3w_S, basinf = basins_2d3w_h, ncond = 3):
 
     '''
     param indexes:
@@ -520,11 +521,13 @@ def basin_probs_2d(x, params, nstg, log_param_idxs = [], rdotf = rdot_2d3w_S, ba
                             np.repeat(x[6:12],  int(params[16]), axis=1), 
                             params[6:8], params[8:12], params[12:16], params[4:6], 
                             params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf, basinf)
-    
-    trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
-    return np.mean(trajBasinsS, axis=2)
 
-def basin_probs_1d(x, params, nstg, log_param_idxs = [], rdotf = rdot_1d2w, basinf = basins_1d2w_h):
+    return np.array(np.split(trajBasins, ncond))
+    
+    #trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
+    #return np.mean(trajBasinsS, axis=2)
+
+def basin_probs_1d(x, params, nstg, log_param_idxs = [], rdotf = rdot_1d2w, basinf = basins_1d2w_h, ncond = 2):
 
     '''
     param indexes:
@@ -544,8 +547,10 @@ def basin_probs_1d(x, params, nstg, log_param_idxs = [], rdotf = rdot_1d2w, basi
             params[6], params[8:11], params[4], 
             params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf, basinf)
     
-    trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
-    return np.mean(trajBasinsS, axis=2)
+    return np.array(np.split(trajBasins, ncond))
+    
+    #trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
+    #return np.mean(trajBasinsS, axis=2)
 
 def pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf = rdot_1d2w):
     
