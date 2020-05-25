@@ -2,6 +2,7 @@ import three_well as w3
 import numpy as np
 import scipy as sc
 import emcee
+import re
 
 from scipy.optimize import minimize, basinhopping, dual_annealing
 from numpy import linalg as linalg
@@ -62,12 +63,13 @@ parser.add_argument("--prior_scale_params", type=str, nargs='+', help="list of p
 
 parser.add_argument("--fixed_values",   type=float, nargs='+', help="values of fixed params",     default = [])
 parser.add_argument("--prior_types",    type=int,   nargs='+', help="prior types, 0: uniform, 1: gaussian, 2: exponential, 3: integer", default = [])
-parser.add_argument("--prior_scales",   type=str, nargs='+', 
+parser.add_argument("--prior_scales",   type=str,   nargs='+', 
         help="list of prior scales-- format: comma between two numbers for the same param, space between numbers for different params", 
         default = [])
-parser.add_argument("--rdot_type",       type=int, help="dynamics_func: 0 = siggia; 1 = polar, three well; 2 = polar, four well", default = 0)
+parser.add_argument("--model_mode", type=str, help='''type of model to use; e.g, 1d2w_s means 1 dimensional model with 2 wells and soft boundaries.
+        currently supported: [1d2w_s, 1d2w_h, 2d3w_s, 2d3w_h, 2d4w_s, 2d4w_h, 2d3w_S_s, 2d3w_S_h]''')
 parser.add_argument("--rdot_depth",      type=float, help="b parameter for rdot function", default = -1)
-parser.add_argument("--basin_type",      type=int, help="0: discrete, 1: continuous", default = 0)
+
 parser.add_argument("--init_pos_file",   type=str, help="dict with sampling initial position data", default = '')
 
 args = parser.parse_args()
@@ -88,7 +90,8 @@ logfile = open("{0}/log.txt".format(outdir), "a+")
 np.save('{0}/args.npy'.format(outdir), args) 
 
 # Load the training data
-nprobs  = 4 if args.rdot_type==2 else 3
+
+nprobs  = int(re.search('\dw',args.model_mode).group()[0])
 predsS  = np.load('{0}/log_reg_pca_preds{1}.npy'.format(datdir, nprobs))
 nrep    = predsS.shape[1] 
 
@@ -96,7 +99,8 @@ bmpOn = np.vstack([ np.ones(6) , np.zeros(6) , np.ones(6)])
 tgfOn = np.vstack([ np.zeros(6), np.zeros(6) , np.ones(6)])
 
 x = np.hstack([np.repeat(bmpOn,nrep,axis=0),np.repeat(tgfOn,nrep,axis=0)]).T
-y = predsS.reshape((9,6,nprobs))[:,:,:(nprobs-1)]
+#y = predsS.reshape((9,6,nprobs))[:,:,:(nprobs-1)]
+y = predsS[:,:,:(nprobs-1)]
 
 # initialize the model
 # prior_scales   = {'yerr':[0.0005], 'diff':[0.05], 'a0':[0,5], 'b0':[0,5], 'a2':[0,10], 'b2':[0,10]}
