@@ -51,7 +51,7 @@ class ThreeWell():
     '''
     def __init__(self, set_param_dict = {}, unset_param_prior_type_dict = {}, unset_param_prior_scale_dict = {}, 
             default_value_params = [], log_param_list = ['tau', 'diff', 'b1', 'b2', 'c1', 'c2'], 
-            rdot_idx = 0, rdot_depth = 2./3., basinf_idx = 0, seed = None):
+            mode = '2d3w_S_h', rdot_depth = None, seed = None):
         
         '''
             model_params       = values for all the parameters
@@ -63,21 +63,24 @@ class ThreeWell():
                                         1: gaussian,    [mu, sigma]
                                         2: exponential, [tau]
                                         3: integer,     [lower,upper]
+            mode = NdMwK or NdMw_sK where 
+                    N is dimensionality of landscape, 
+                    M is number of wells
+                    K is "h" for hard (Heavyside) boundaries and "s" for soft (sigmoid) boundaries
+                    the addition of "_s" after the w implies using the Siggia model (only implemented for 2d3w)
+                    e.g., 1d2wh: 1D - 2 well,  hard boundaries (Heavyside)
         '''
         
-        # set the landscape
-        basin3fs    = [getBasins,  getBasinsC]
-        self.rdotf  = rdot
-        self.basinf = basin3fs[basinf_idx]
-        if rdot_idx == 1:
-            #self.rdotf  = lambda r, tau, tilt: rdot3(r, tau, tilt, rdot_depth)
-            self.rdotf  = rdot3
-        elif rdot_idx == 2:
-            self.rdotf  = rdot4 #lambda r, tau, tilt: rdot4(r, tau, tilt, rdot_depth)
-            if basinf_idx == 0: 
-                self.basinf = getBasins4 #lambda rs: getBasins4(rs, rdot_depth)
-            else:
-                self.basinf = getBasins4C #lambda rs: getBasins4C(rs, rdot_depth)
+        # need to set: rdotf, basinf, and basin_probsf based on "mode" variable
+        self.rdotf          = eval('rdot_{0}'.format(mode[0:-2]))
+        self.basinf         = eval('basins_{0}'.format(mode.replace('_S','')))
+        self.basin_probsf   = eval('basin_probs_{0}'.format(mode[0:2])) 
+        
+        # so theoretically i'd want to be able to set a parameter for the well depth,
+        # but that'd require using a lambda function? and that's not working so well lately
+        # e.g., something like
+        # if rdot_depth:
+        #   self.rdotf = lambda r: self.rdotf(r, b=rdot_depth)
 
         np.random.seed(seed)
         
@@ -127,7 +130,7 @@ class ThreeWell():
         self.theta_idxs         = []
         self.theta_prior_types  = []
         self.theta_prior_scales = []
-        theta_idx_dict          = {}
+        
         for k,v in self.param_default_info.items():
             if k in set_param_dict:
                 # param is fixed by user
@@ -166,6 +169,11 @@ class ThreeWell():
         # param_inits = self.random_parameter_set()
         # for i in range(self.ntheta):
         #     self.model_params[self.theta_idxs[i]] = param_inits[i]
+        
+        #def my_basin_probs(x, params, nstg):
+        #    return probsf(x, params, nstg, log_param_idxs, self.rdotf, self.basinf)
+        
+        #self.basin_probsf = my_basin_probs
 
     def set_seed(self, seed):
         np.random.seed(seed)
@@ -267,7 +275,8 @@ class ThreeWell():
     def log_likelihood(self, theta, x, y):
         
         params = self.get_params(theta)
-        model  = getTrajBasinProbabilities(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
+        model  = basin_probs_2D(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
+        model  = self.basin_probsf(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
     
         return -0.5*np.sum((y - model) ** 2 / params[17] )
 
@@ -298,8 +307,8 @@ def sigma1(f):
     #return (np.tanh(nrm)*np.divide(f.T, nrm, out=np.zeros_like(f.T), where=nrm!=0)).T
 
 # @jit(nopython=True)
-def getBasins(rs):
-    # for use with rdot and rdot3
+def basins_2d3w_h(rs):
+    # for use with rdot and rdot_2d3w
     basins = np.zeros(list(rs.shape[0:-1])+[3])
 
     inb0   = rs[...,1] > sqrt3over3*np.abs(rs[...,0])
@@ -312,8 +321,8 @@ def getBasins(rs):
     return basins
 
 # @jit(nopython=True)
-def getBasins4(rs, b=2):
-    # for use with rdot4
+def basins_2d4w_h(rs, b=2):
+    # for use with rdot_2d4w
     basins = np.zeros(list(rs.shape[0:-1])+[4])
 
     inb3   = (rs[...,0]*rs[...,0] + rs[...,1]*rs[...,1]) < (b-np.sqrt(b*b-3)) / 3.
@@ -327,15 +336,34 @@ def getBasins4(rs, b=2):
     basins[inb3,3] = 1
     return basins
 
+# @jit(nopython=True)
+def basins_1d2w_h(rs):
+    # for use with rdot_1d2w
+    basins = np.zeros(list(rs.shape)+[2])
+
+    inb0   = rs > 0
+    inb1   = ~inb0
+
+    basins[inb0,0] = 1
+    basins[inb1,1] = 1
+    
+    return basins
+
+def basins_1d2w_s(rs):
+    # for use with rdot_1d2w
+
+    right_basin_p  = sigmoid2(rs) 
+    return np.stack([right_basin_p, 1 - right_basin_p])
+
 sigmoid2 = lambda x: 1/(1+np.exp(-100*x))
-def getBasinsC(rs):
+def basins_2d3w_s(rs):
     
     upperBasinP    = sigmoid2(rs[...,1] - sqrt3over3*np.abs(rs[...,0]))
     lowerBasinP    = 1 - upperBasinP
     posXp          = sigmoid2(rs[...,0])
     return np.stack([upperBasinP, lowerBasinP*posXp, lowerBasinP*(1-posXp)], axis=2)
 
-def getBasins4C(rs, b=2):
+def basins_2d4w_s(rs, b=2):
     
     midBasinP     = sigmoid2((b-np.sqrt(b*b-3)) / 3. - (rs[...,0]*rs[...,0] + rs[...,1]*rs[...,1])) 
     notMidBasinP  = 1 - midBasinP
@@ -348,13 +376,13 @@ def getBasins4C(rs, b=2):
     return np.stack([upperBasinP*notMidBasinP, lowerBasinP*posXp*notMidBasinP, lowerBasinP*(1-posXp)*notMidBasinP, midBasinP], axis=2)
 
 # @jit(nopython=True)
-def rdot(r, tau, tilt):
+def rdot_2d3w_S(r, tau, tilt):
     return (sigma1(f(r) + tilt) - r) / tau
 
 # gradient of U(r) = -r^4cos(3(phi-pi/2))+b*r^6, 
 # with b=2/3, has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
 # @jit(nopython=True)
-def rdot3(r, tau, tilt, b = 2/3):
+def rdot_2d3w(r, tau, tilt, b = 2/3):
     x = r[:,0]
     y = r[:,1]
 
@@ -378,7 +406,7 @@ def rdot3(r, tau, tilt, b = 2/3):
 # gradient of U(r) = r^2-b*r^4cos(3(phi-pi/2))+r^6, 
 # with b = 2, has mimumums at ((0,1), (+/-sqrt(3)/2,-1/2))
 # @jit(nopython=True)
-def rdot4(r, tau, tilt, b=2):
+def rdot_2d4w(r, tau, tilt, b=2):
     
     x = r[:,0]
     y = r[:,1]
@@ -398,6 +426,9 @@ def rdot4(r, tau, tilt, b=2):
     
     return (-np.array([gradx, grady]).T + tilt) / tau
 
+def rdot_1d2w(x, tau, tilt):
+    
+    return (-2*x*x*x + x/2 + tilt) / tau
 
 # @jit(nopython=True)
 def getSigSeriesG(sts, nt, a, mu, sig):
@@ -415,40 +446,7 @@ def getSigSeriesG(sts, nt, a, mu, sig):
 #getTilt = lambda l,v: np.array([l]).transpose((1,2,0)).dot(v)
 getTilt = lambda l,v: np.matmul(np.array([l]).transpose((1,2,0)),v)
 
-def fullTrajPosOld(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rdot):
-    
-    # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
-    # sigParams = parameters for getSigSeries function
-    # r0 = initial position on fate landscape 1x2
-    # noises = noise at each timestep for each data point --> nt x M x 2
-    # nt = number of timesteps (integer)
-    # dt = length of timesteps (float)
-    # tau = timescale (float)
-    
-    l0s = np.zeros((nt, sts1.shape[1])) + m0[0]
-    l1s = getSigSeriesG(sts1, nt, *m1[0:3]) # nt x M
-    l2s = getSigSeriesG(sts2, nt, *m2[0:3]) # nt x M
-    v0  = np.array([[np.cos(m0[1]), np.sin(m0[1])]])
-    v1  = np.array([[np.cos(m1[3]), np.sin(m1[3])]])
-    v2  = np.array([[np.cos(m2[3]), np.sin(m2[3])]])
-    
-    tilt = getTilt(l0s, v0) + getTilt(l1s, v1) + getTilt(l2s, v2)
-    # should be able to evaluate m(t) = l0v0+l1v1+l2v2 and feed that into rdot to save some computation time...
-
-    rs      = np.zeros((sts1.shape[1], nt, r0.shape[0])) # M x nt x 2
-    rs[:,0] = r0
-    
-    for t in range(0, lag):
-        rs[:,t+1] = rs[:,t] + dt*noises[t]
-        #rs.append(rs[t] + dt*noises[t])
-
-    for t in range(lag, nt-1):
-        rs[:,t+1] = rs[:,t] + dt*(rdotf(rs[:,t], tau, tilt[t]) + noises[t])
-        #rs.append(rs[t] + dt*(rdotf(rs[t], tau, tilt[t]) + noises[t]))
-
-    return rs
-
-def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rdot):
+def pos_traj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rdot_2d3w_S):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
     # sigParams = parameters for getSigSeries function
@@ -483,28 +481,25 @@ def fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf = rd
     return np.stack(rs,axis=1)
 
 # @jit(nopython=True)
-def fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts = 6, rdotf = rdot, basinf = getBasins):
+def basin_traj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts = 6, rdotf = rdot_2d3w_S, basinf = basins_2d3w_h):
     
-    rs      = fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf) 
+    rs      = pos_traj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
 
     return basinf(rs[:,tidxs]).transpose((1,0,2))
 
 # @jit(nopython=True)
-def fullTrajD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf=rdot, basinf=getBasins):
+def basin_traj_diff(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf = rdot_2d3w_S, basinf = basins_2d3w_h):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
-    return fullTraj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts, rdotf, basinf)
+    return basin_traj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts, rdotf, basinf)
 
-def fullTrajPosD(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot):
+def pos_traj_diff(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot_2d3w_S):
     noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
-    return fullTrajPos(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
+    return pos_traj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
 
-def fullTrajPosDold(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdot):
-    noises = np.sqrt(2*dff)*np.random.normal(size=(nt,sts1.shape[1],2))
-    return fullTrajPosOld(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf)
 
 # @jit(nopython=True)
-def getTrajBasinProbabilities(x, params, nstg, log_param_idxs = [], rdotf = rdot, basinf = getBasins):
+def basin_probs_2d(x, params, nstg, log_param_idxs = [], rdotf = rdot_2d3w_S, basinf = basins_2d3w_h):
 
     '''
     param indexes:
@@ -521,7 +516,7 @@ def getTrajBasinProbabilities(x, params, nstg, log_param_idxs = [], rdotf = rdot
     for i in log_param_idxs:
         params[i] = 10.**params[i]
 
-    trajBasins  = fullTrajD(np.repeat(x[0:6],   int(params[16]), axis=1), 
+    trajBasins  = basin_traj_diff(np.repeat(x[0:6],   int(params[16]), axis=1), 
                             np.repeat(x[6:12],  int(params[16]), axis=1), 
                             params[6:8], params[8:12], params[12:16], params[4:6], 
                             params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf, basinf)
@@ -529,3 +524,69 @@ def getTrajBasinProbabilities(x, params, nstg, log_param_idxs = [], rdotf = rdot
     trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
     return np.mean(trajBasinsS, axis=2)
 
+def basin_probs_1d(x, params, nstg, log_param_idxs = [], rdotf = rdot_1d2w, basinf = basins_1d2w_h):
+
+    '''
+    param indexes:
+    nt, dt, tau, diff: 0,1,2,3
+    x0: 4
+    a0: 6 
+    b0,b1,b2: 8,9,10
+    nper: 16 
+    yerr: 17        
+    lag : 18
+    '''
+    
+    for i in log_param_idxs:
+        params[i] = 10.**params[i]
+
+    trajBasins  = basin_traj_diff_1d(np.repeat(x[0:6],  int(params[16]), axis=1), 
+            params[6], params[8:11], params[4], 
+            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf, basinf)
+    
+    trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
+    return np.mean(trajBasinsS, axis=2)
+
+def pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf = rdot_1d2w):
+    
+    # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
+    # m0 = tilt toward development
+    # m1 = array of gaussian params for tilt toward BMP
+    # x0 = initial position on fate landscape 1x1
+    # noises = noise at each timestep for each data point --> nt x M
+    # nt = number of timesteps (integer)
+    # dt = length of timesteps (float)
+    # tau = timescale (float)
+    
+    l0s = np.zeros((nt, sts.shape[1])) + m0         # if positive, pushes x negative toward neural
+    l1s = getSigSeriesG(sts, nt, *m1[0:3]) # nt x M # if positive, pushes x positive toward epidermal
+    
+    tilt = l1s - l0s
+
+    xs      = [x0*np.ones((sts.shape[1]))]
+    for t in range(0, lag):
+        xs.append(xs[t] + dt*noises[t])
+
+    for t in range(lag, nt-1):
+        xs.append(xs[t] + dt*(rdotf(xs[t], tau, tilt[t]) + noises[t]))
+
+    return np.stack(xs,axis=1)
+
+def basin_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, npts = 6, rdotf = rdot_1d2w, basinf = basins_1d2w_h):
+    
+    rs      = pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf) 
+    tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
+    return basinf(rs[:,tidxs]).transpose((1,0,2))
+
+# @jit(nopython=True)
+def basin_traj_diff_1d(sts, m0, m1, x0, dff, nt, dt, tau, lag, npts=6, rdotf = rdot_1d2w, basinf = basins_1d2w_h):
+    
+    noises = np.sqrt(dff)*np.random.normal(size=(nt,sts.shape[1]))
+    
+    return basin_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, npts, rdotf, basinf)
+
+def pos_traj_diff_1d(sts, m0, m1, x0, dff, nt, dt, tau, lag, rdotf = rdot_1d2w):
+
+    noises = np.sqrt(dff)*np.random.normal(size=(nt,sts.shape[1]))
+    
+    return pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf)
