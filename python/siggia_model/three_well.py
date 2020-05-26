@@ -276,7 +276,7 @@ class ThreeWell():
         
         params = self.get_params(theta)
         #model  = self.basin_probsf(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
-        basins = self.basin_probsf(x, params, y.shape[1], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
+        basins = self.basin_probsf(x, params, y.shape[2], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
         errs   = np.array([[y[i]-basins[i,j] for i in range(y.shape[0])] for j in range(basins.shape[1])])
     
         return -0.5*np.sum(errs ** 2) / (params[16]*params[17]) 
@@ -308,20 +308,9 @@ def sigma1(f):
     #return (np.tanh(nrm)*np.divide(f.T, nrm, out=np.zeros_like(f.T), where=nrm!=0)).T
 
 # @jit(nopython=True)
-def basins_2d3w_h(rs):
-    # for use with rdot and rdot_2d3w
-    basins = np.zeros(list(rs.shape[0:-1])+[3])
-
-    inb0   = rs[...,1] > sqrt3over3*np.abs(rs[...,0])
-    inb1   = ~inb0 & (rs[...,0]>0)
-    inb2   = ~(inb0 | inb1)
-
-    basins[inb0,0] = 1
-    basins[inb1,1] = 1
-    basins[inb2,2] = 1
-    return basins
-
 # @jit(nopython=True)
+sigmoid2 = lambda x: 1/(1+np.exp(-100*x))
+
 def basins_2d4w_h(rs, b=2):
     # for use with rdot_2d4w
     basins = np.zeros(list(rs.shape[0:-1])+[4])
@@ -354,9 +343,21 @@ def basins_1d2w_s(rs):
     # for use with rdot_1d2w
 
     right_basin_p  = sigmoid2(rs) 
-    return np.stack([right_basin_p, 1 - right_basin_p])
+    return np.stack([right_basin_p, 1 - right_basin_p], axis=2)
 
-sigmoid2 = lambda x: 1/(1+np.exp(-100*x))
+def basins_2d3w_h(rs):
+    # for use with rdot and rdot_2d3w
+    basins = np.zeros(list(rs.shape[0:-1])+[3])
+
+    inb0   = rs[...,1] > sqrt3over3*np.abs(rs[...,0])
+    inb1   = ~inb0 & (rs[...,0]>0)
+    inb2   = ~(inb0 | inb1)
+
+    basins[inb0,0] = 1
+    basins[inb1,1] = 1
+    basins[inb2,2] = 1
+    return basins
+
 def basins_2d3w_s(rs):
     
     upperBasinP    = sigmoid2(rs[...,1] - sqrt3over3*np.abs(rs[...,0]))
@@ -487,7 +488,7 @@ def basin_traj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, npts = 6, r
     rs      = pos_traj(sts1, sts2, m0, m1, m2, r0, noises, nt, dt, tau, lag, rdotf) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
 
-    return basinf(rs[:,tidxs]).transpose((1,0,2))
+    return basinf(rs[:,tidxs])
 
 # @jit(nopython=True)
 def basin_traj_diff(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, npts=6, rdotf = rdot_2d3w_S, basinf = basins_2d3w_h):
@@ -546,7 +547,8 @@ def basin_probs_1d(x, params, nstg, log_param_idxs = [], rdotf = rdot_1d2w, basi
     trajBasins  = basin_traj_diff_1d(np.repeat(x[0:6],  int(params[16]), axis=1), 
             params[6], params[8:11], params[4], 
             params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf, basinf)
-    
+   
+#    print('\n\n\ntrajBasins.shape={0}\n\n\n'.format(trajBasins.shape))
     return np.array(np.split(trajBasins, ncond))
     
     #trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
@@ -581,7 +583,7 @@ def basin_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, npts = 6, rdotf = r
     
     rs      = pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf) 
     tidxs   = np.array(np.around(np.linspace(0,nt-1,npts+1)), dtype='int')[1:]
-    return basinf(rs[:,tidxs]).transpose((1,0,2))
+    return basinf(rs[:,tidxs])
 
 # @jit(nopython=True)
 def basin_traj_diff_1d(sts, m0, m1, x0, dff, nt, dt, tau, lag, npts=6, rdotf = rdot_1d2w, basinf = basins_1d2w_h):

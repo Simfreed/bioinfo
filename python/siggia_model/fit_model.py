@@ -91,15 +91,22 @@ np.save('{0}/args.npy'.format(outdir), args)
 
 # Load the training data
 
+ndim    = int(re.search('\dd',args.model_mode).group()[0])
 nprobs  = int(re.search('\dw',args.model_mode).group()[0])
 predsS  = np.load('{0}/log_reg_pca_preds{1}.npy'.format(datdir, nprobs))
-nrep    = predsS.shape[1] 
+#nrep    = predsS.shape[1] 
 
 bmpOn = np.vstack([ np.ones(6) , np.zeros(6) , np.ones(6)])
 tgfOn = np.vstack([ np.zeros(6), np.zeros(6) , np.ones(6)])
 
-x = np.hstack([np.repeat(bmpOn,nrep,axis=0),np.repeat(tgfOn,nrep,axis=0)]).T
+#x = np.hstack([np.repeat(bmpOn,nrep,axis=0),np.repeat(tgfOn,nrep,axis=0)]).T
 #y = predsS.reshape((9,6,nprobs))[:,:,:(nprobs-1)]
+
+if ndim == 1:
+    x = bmpOn[0:2].T
+else:
+    x = np.hstack([bmpOn,tgfOn]).T
+
 y = predsS[:,:,:(nprobs-1)]
 
 # initialize the model
@@ -112,14 +119,14 @@ prior_type_dict  = {k:v for k,v in zip(args.prior_type_params, args.prior_types)
 
 if args.rdot_depth > 0:
     rdot_b = args.rdot_depth
-elif args.rdot_type == 2:
+elif nprobs == 3:
     rdot_b = 2
 else:
     rdot_b = 2./3.
 
 myw3   = w3.ThreeWell(set_param_dict = fixed_param_dict,   default_value_params = default_params,
         unset_param_prior_scale_dict = prior_scale_dict, unset_param_prior_type_dict = prior_type_dict, seed = args.seed,
-        rdot_idx = args.rdot_type, basinf_idx = args.basin_type, rdot_depth = rdot_b)
+        mode = args.model_mode, rdot_depth = rdot_b)
 
 labels = myw3.get_theta_labels()
 
