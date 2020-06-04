@@ -107,7 +107,13 @@ if ndim == 1:
 else:
     x = np.hstack([bmpOn,tgfOn]).T
 
-y = predsS[:,:,:(nprobs-1)]
+y = predsS[:,:,:,:-1]
+
+print('\n\nx.shape={0}\n\n'.format(x.shape))
+print('\n\nx={0}\n\n'.format(x))
+print('\n\ny.shape={0}\n\n'.format(y.shape))
+print('\n\ny={0}\n\n'.format(y))
+
 
 # initialize the model
 # prior_scales   = {'yerr':[0.0005], 'diff':[0.05], 'a0':[0,5], 'b0':[0,5], 'a2':[0,10], 'b2':[0,10]}
