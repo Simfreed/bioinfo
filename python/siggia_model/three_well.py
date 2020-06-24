@@ -6,7 +6,7 @@ import scipy as sc
 from autograd.numpy import linalg as linalg
 import os
 
-param_list      = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a3','b0','b1','b2','b3','c0','c1','c2','c3','nper','yerr','lag']
+param_list      = ['nt','dt','tau','diff','x0','y0','a0','a1','a3','b0','b1','b2','b3','c0','c1','c2','c3','nper','yerr','lag']
 param_idx_dict  = dict(zip(param_list, range(len(param_list))))
 
 class ThreeWell():
@@ -94,8 +94,8 @@ class ThreeWell():
                 'dt'    : [  1            , 2         , [1]        ],
                 'tau'   : [  50           , 0         , [10,200]   ],
                 'diff'  : [  0.001        , 2         , [0.001]    ],
-                'xpos'  : [  0            , 1         , [0,1]      ],
-                'ypos'  : [  0            , 1         , [0,1]      ],
+                'x0'    : [  0            , 1         , [0,1]      ],
+                'y0'    : [  0            , 1         , [0,1]      ],
                 'a0'    : [  1            , 1         , [0,2]      ],
                 'a1'    : [  1            , 1         , [0,100]    ],
                 'a3'    : [  11*np.pi/6   , 0         , [0,2*np.pi]],
@@ -510,7 +510,7 @@ def basin_probs_2d(x, params, nstg, log_param_idxs = [], rdotf = rdot_2d3w_S, ba
             [params[param_idx_dict[k]] for k in ['a0','a3']], 
             [params[param_idx_dict[k]] for k in ['b0','b1','b2','b3']], 
             [params[param_idx_dict[k]] for k in ['c0','c1','c2','c3']], 
-            [params[param_idx_dict[k]] for k in ['x','y']],  
+            [params[param_idx_dict[k]] for k in ['x0','y0']],  
             params[param_idx_dict['diff']], 
             int(params[param_idx_dict['nt']]), 
             params[param_idx_dict['dt']], 
