@@ -6,6 +6,9 @@ import scipy as sc
 from autograd.numpy import linalg as linalg
 import os
 
+param_list      = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a3','b0','b1','b2','b3','c0','c1','c2','c3','nper','yerr','lag']
+param_idx_dict  = dict(zip(param_list, range(len(param_list))))
+
 class ThreeWell():
     
     ''' 
@@ -84,45 +87,46 @@ class ThreeWell():
 
         np.random.seed(seed)
         
-        #param_list = ['nt','dt','tau','diff','xpos','ypos','a0','a1','a2','a3','b0','b1','b2','b3','nper']
 
         self.param_default_info = { 
-                # name:   [ index   , value        , prior_type, prior_params ] 
-                'nt'    : [ 0       , 100          , 3         , [10,1000]  ],
-                'dt'    : [ 1       , 1            , 2         , [1]        ],
-                'tau'   : [ 2       , 50           , 0         , [10,200]   ],
-                'diff'  : [ 3       , 0.001        , 2         , [0.001]    ],
-                'xpos'  : [ 4       , 0            , 1         , [0,1]      ],
-                'ypos'  : [ 5       , 0            , 1         , [0,1]      ],
-                'a0'    : [ 6       , 1            , 1         , [0,2]      ],
-                'a3'    : [ 7       , 11*np.pi/6   , 0         , [0,2*np.pi]],
-                'b0'    : [ 8       , 1            , 1         , [0,100]    ],
-                'b1'    : [ 9       , 50           , 0         , [0,100]    ],
-                'b2'    : [ 10      , 10           , 0         , [0,100]    ],
-                'b3'    : [ 11      , np.pi/2      , 0         , [0,2*np.pi]],
-                'c0'    : [ 12      , 1            , 1         , [0,100]    ],
-                'c1'    : [ 13      , 50           , 0         , [0,100]    ],
-                'c2'    : [ 14      , 10           , 0         , [0,100]    ],
-                'c3'    : [ 15      , 7*np.pi/6    , 0         , [0,2*np.pi]],
-                'nper'  : [ 16      , 100          , 3         , [10,200]   ],
-                'yerr'  : [ 17      , 0.0005       , 2         , [0.0005]   ],
-                'lag'   : [ 18      , 0            , 3         , [0,20]     ]
+                # name:   [ value        , prior_type, prior_params ] 
+                'nt'    : [  100          , 3         , [10,1000]  ],
+                'dt'    : [  1            , 2         , [1]        ],
+                'tau'   : [  50           , 0         , [10,200]   ],
+                'diff'  : [  0.001        , 2         , [0.001]    ],
+                'xpos'  : [  0            , 1         , [0,1]      ],
+                'ypos'  : [  0            , 1         , [0,1]      ],
+                'a0'    : [  1            , 1         , [0,2]      ],
+                'a1'    : [  1            , 1         , [0,100]    ],
+                'a3'    : [  11*np.pi/6   , 0         , [0,2*np.pi]],
+                'b0'    : [  1            , 1         , [0,100]    ],
+                'b1'    : [  50           , 0         , [0,100]    ],
+                'b2'    : [  10           , 0         , [0,100]    ],
+                'b3'    : [  np.pi/2      , 0         , [0,2*np.pi]],
+                'c0'    : [  1            , 1         , [0,100]    ],
+                'c1'    : [  50           , 0         , [0,100]    ],
+                'c2'    : [  10           , 0         , [0,100]    ],
+                'c3'    : [  7*np.pi/6    , 0         , [0,2*np.pi]],
+                'nper'  : [  100          , 3         , [10,200]   ],
+                'yerr'  : [  0.0005       , 2         , [0.0005]   ],
+                'lag'   : [  0            , 3         , [0,20]     ]
                 }
 
         self.log_param_default_info = {
-                'tau'    : [ 2      , np.log10(50) , 0          , [0,4]    ],
-                'diff'   : [ 3      , -3           , 0          , [-5,-1]    ],
-                'b1'     : [ 9      , np.log10(50) , 0          , [0,4]    ],
-                'b2'     : [ 10     , 1            , 0          , [0,4]    ],
-                'c1'     : [ 13     , np.log10(50) , 0          , [0,4]    ],
-                'c2'     : [ 14     , 1            , 0          , [0,4]    ]
+                'tau'    : [ np.log10(50) , 0          , [0,4]     ],
+                'diff'   : [ -3           , 0          , [-5,-1]   ],
+                'a1'     : [ np.log10(50) , 0          , [0,4]     ],
+                'b1'     : [ np.log10(50) , 0          , [0,4]     ],
+                'b2'     : [ 1            , 0          , [0,4]     ],
+                'c1'     : [ np.log10(50) , 0          , [0,4]     ],
+                'c2'     : [ 1            , 0          , [0,4]     ]
                 }
       
         self.log_param_list = log_param_list
         self.log_param_idxs = []
         for k in log_param_list:
             self.param_default_info[k] = self.log_param_default_info[k]
-            self.log_param_idxs.append(self.param_default_info[k][0])
+            self.log_param_idxs.append(param_idx_dict[k])
 
         nparams = len(self.param_default_info)
 
@@ -134,16 +138,16 @@ class ThreeWell():
         for k,v in self.param_default_info.items():
             if k in set_param_dict:
                 # param is fixed by user
-                self.model_params[v[0]] = set_param_dict[k]
+                self.model_params[param_idx_dict[k]] = set_param_dict[k]
             elif k in default_value_params:
                 # param is fixed to default
-                self.model_params[v[0]] = v[1]
+                self.model_params[param_idx_dict[k]] = v[0]
             else:
                 # param is unfixed
-                self.theta_idxs.append(v[0])
+                self.theta_idxs.append(param_idx_dict[k])
 
-                prior_type  = unset_param_prior_type_dict.get(  k, v[2])
-                prior_scale = unset_param_prior_scale_dict.get( k, v[3])
+                prior_type  = unset_param_prior_type_dict.get(  k, v[1])
+                prior_scale = unset_param_prior_scale_dict.get( k, v[2])
 
                 self.theta_prior_types.append( prior_type )
                 self.theta_prior_scales.append(prior_scale)
@@ -152,11 +156,11 @@ class ThreeWell():
 
         # some logic specific to uniformly distributed parameters with units of time
         # unless otherwise specified, these priors should be *defaulted* to be on order of magnitude of the trajectory timescale
-        time_params =['tau','b1','b2','c1','c2']
+        time_params =['tau','a1','b1','b2','c1','c2']
         if 'nt' in set_param_dict or 'nt' in default_value_params:
-            nt = self.model_params[self.param_default_info['nt'][0]]
+            nt = self.model_params[param_idx_dict['nt']]
             for param in time_params:
-                idxs = np.where(np.array(self.theta_idxs)==self.param_default_info[param][0])[0]
+                idxs = np.where(np.array(self.theta_idxs)==param_idx_dict[param])[0]
                 if len(idxs) > 0:
                     idx = idxs[0]
                     if param not in unset_param_prior_scale_dict and self.theta_prior_types[idx] in [0,3]:
@@ -169,11 +173,6 @@ class ThreeWell():
         # param_inits = self.random_parameter_set()
         # for i in range(self.ntheta):
         #     self.model_params[self.theta_idxs[i]] = param_inits[i]
-        
-        #def my_basin_probs(x, params, nstg):
-        #    return probsf(x, params, nstg, log_param_idxs, self.rdotf, self.basinf)
-        
-        #self.basin_probsf = my_basin_probs
 
     def set_seed(self, seed):
         np.random.seed(seed)
@@ -203,24 +202,24 @@ class ThreeWell():
 
     def get_fixed_params(self):
         fixed_params = {}
-        for k, v in self.param_default_info.items():
-            val = self.model_params[v[0]]
+        for k, v in param_idx_dict.items():
+            val = self.model_params[v]
             if not np.isnan(val):
                 fixed_params[k]=val
         return fixed_params
     
     def get_theta_labels(self):
         theta_labels = []
-        for k,v in self.param_default_info.items():
-            if v[0] in self.theta_idxs:
+        for k,v in param_idx_dict.items():
+            if v in self.theta_idxs:
                 theta_labels.append(k)
         return theta_labels
     
     def get_prior_info(self):
         theta_info = {}
-        thidxs = np.array(self.theta_idxs)
-        for k,v in self.param_default_info.items():
-            z = np.where(thidxs==v[0])[0]
+        thidxs     = np.array(self.theta_idxs)
+        for k,v in param_idx_dict.items():
+            z = np.where(thidxs==v)[0]
             if len(z) > 0:
                 theta_info[k] = self.prior_func_names[self.theta_prior_types[z[0]]],self.theta_prior_scales[z[0]]
         return theta_info
@@ -257,7 +256,7 @@ class ThreeWell():
         th     = np.zeros(self.ntheta)
         
         for k,v in params.items():
-            z = np.where(thidxs==self.param_default_info[k][0])[0]
+            z = np.where(thidxs==param_idx_dict[k])[0]
             if len(z) > 0:
                 th[z[0]] = v
         return th
@@ -278,7 +277,7 @@ class ThreeWell():
         basin_probs  = self.basin_probsf(x, params, y.shape[2], self.log_param_idxs, self.rdotf, self.basinf)[:,:,:-1]
         errs         = np.array([[y[i,j]-basin_probs[i] for i in range(y.shape[0])] for j in range(y.shape[1])])
     
-        return -0.5*np.sum(errs ** 2) / params[17]
+        return -0.5*np.sum(errs ** 2) / params[param_idx_dict['yerr']]
 
     # @jit(nopython=True)
     def log_probability(self, theta, x, y):
@@ -502,25 +501,22 @@ def pos_traj_diff(sts1, sts2, m0, m1, m2, r0, dff, nt, dt, tau, lag, rdotf = rdo
 # @jit(nopython=True)
 def basin_probs_2d(x, params, nstg, log_param_idxs = [], rdotf = rdot_2d3w_S, basinf = basins_2d3w_h, ncond = 3):
 
-    '''
-    param indexes:
-    nt, dt, tau, diff: 0,1,2,3
-    x,y: 4,5
-    a0,a3: 6,7
-    b0,b1,b2,b3: 8,9,10,11
-    c0,c1,c2,c3: 12,13,14,15
-    nper: 16
-    yerr: 17        
-    lag : 18
-    '''
-    
     for i in log_param_idxs:
         params[i] = 10.**params[i]
 
-    trajBasins  = basin_traj_diff(np.repeat(x[0:6],   int(params[16]), axis=1), 
-                            np.repeat(x[6:12],  int(params[16]), axis=1), 
-                            params[6:8], params[8:12], params[12:16], params[4:6], 
-                            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf, basinf)
+    trajBasins  = basin_traj_diff(
+            np.repeat(x[0:6], int(params[param_idx_dict['nper']]), axis=1), 
+            np.repeat(x[6:12],int(params[param_idx_dict['nper']]), axis=1), 
+            [params[param_idx_dict[k]] for k in ['a0','a3']], 
+            [params[param_idx_dict[k]] for k in ['b0','b1','b2','b3']], 
+            [params[param_idx_dict[k]] for k in ['c0','c1','c2','c3']], 
+            [params[param_idx_dict[k]] for k in ['x','y']],  
+            params[param_idx_dict['diff']], 
+            int(params[param_idx_dict['nt']]), 
+            params[param_idx_dict['dt']], 
+            params[param_idx_dict['tau']], 
+            int(params[param_idx_dict['lag']]), 
+            nstg, rdotf, basinf)
 
     return np.mean(np.array(np.split(trajBasins, ncond)), axis=1)
     
@@ -529,29 +525,23 @@ def basin_probs_2d(x, params, nstg, log_param_idxs = [], rdotf = rdot_2d3w_S, ba
 
 def basin_probs_1d(x, params, nstg, log_param_idxs = [], rdotf = rdot_1d2w, basinf = basins_1d2w_h, ncond = 2):
 
-    '''
-    param indexes:
-    nt, dt, tau, diff: 0,1,2,3
-    x0: 4
-    a0: 6 
-    b0,b1,b2: 8,9,10
-    nper: 16 
-    yerr: 17        
-    lag : 18
-    '''
-    
     for i in log_param_idxs:
         params[i] = 10.**params[i]
 
-    trajBasins  = basin_traj_diff_1d(np.repeat(x[0:6],  int(params[16]), axis=1), 
-            params[6], params[8:11], params[4], 
-            params[3], int(params[0]), params[1], params[2], int(params[18]), nstg, rdotf, basinf)
+    trajBasins  = basin_traj_diff_1d(
+            np.repeat(x[0:6],  int(params[param_idx_dict['nper']]), axis=1), 
+            params[param_idx_dict['a0']], 
+            [params[param_idx_dict[k]] for k in ['b0','b1','b2']], 
+            params[param_idx_dict['x0']], 
+            params[param_idx_dict['diff']], 
+            int(params[param_idx_dict['nt']]), 
+            params[param_idx_dict['dt']], 
+            params[param_idx_dict['tau']], 
+            int(params[param_idx_dict['lag']]), 
+            nstg, rdotf, basinf)
     
     return np.mean(np.array(np.split(trajBasins, ncond)), axis=1)
    
-    #trajBasinsS = np.array(np.split(trajBasins, range(int(params[16]), trajBasins.shape[1], int(params[16])), axis=1))
-    #return np.mean(trajBasinsS, axis=2)
-
 def pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf = rdot_1d2w):
     
     # sts = on/off-ness of bmp at each of the T stages -- should be T x M -- currently T = 6
