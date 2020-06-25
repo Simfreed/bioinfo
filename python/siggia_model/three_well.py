@@ -156,18 +156,24 @@ class ThreeWell():
 
         # some logic specific to uniformly distributed parameters with units of time
         # unless otherwise specified, these priors should be *defaulted* to be on order of magnitude of the trajectory timescale
-        time_params =['tau','a1','b1','b2','c1','c2']
+        # (assuming nt is fixed)
+
+        #time_params = ['tau','a1','b1','b2','c1','c2']
+        param_time_scales = {'tau':5,'a1':1,'b1':5,'b2':5,'c1':5,'c2':5}
+        
+
         if 'nt' in set_param_dict or 'nt' in default_value_params:
             nt = self.model_params[param_idx_dict['nt']]
-            for param in time_params:
+            for param, scale in param_time_scales.items():
                 idxs = np.where(np.array(self.theta_idxs)==param_idx_dict[param])[0]
+                print('resetting param {0}'.format(param))
                 if len(idxs) > 0:
                     idx = idxs[0]
                     if param not in unset_param_prior_scale_dict and self.theta_prior_types[idx] in [0,3]:
                         if param in self.log_param_list:
-                            self.theta_prior_scales[idx][1] = np.log10(5*nt)
+                            self.theta_prior_scales[idx][1] = np.log10(scale*nt)
                         else:
-                            self.theta_prior_scales[idx][1] = 5*nt 
+                            self.theta_prior_scales[idx][1] = scale*nt 
 
 
         # param_inits = self.random_parameter_set()
