@@ -554,18 +554,25 @@ def pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf = rdot_1d2w):
     # tau = timescale (float)
     
     #l0s = np.zeros((nt, sts.shape[1])) + m0         # if positive, pushes x negative toward neural
-    l0s = np.zeros((nt, sts.shape[1]))              # if positive, pushes x negative toward neural
-    l0s[:math.floor(m0[1])] = m0[0]         
+    #l0s = np.zeros((nt, sts.shape[1]))              # if positive, pushes x negative toward neural
+    #l0s[:int(m0[1])] = m0[0]         
     l1s = getSigSeriesG(sts, nt, *m1[0:3]) # nt x M # if positive, pushes x positive toward epidermal
     
-    tilt = l1s - l0s
+    #tilt = l1s - l0s
 
     xs      = [x0*np.ones((sts.shape[1]))]
+
     for t in range(0, lag):
         xs.append(xs[t] + dt*noises[t])
 
-    for t in range(lag, nt-1):
-        xs.append(xs[t] + dt*(rdotf(xs[t], tau, tilt[t]) + noises[t]))
+    for t in range(lag, int(m0[1])):
+        xs.append(xs[t] + dt*(rdotf(xs[t], tau, l1s[t] - m0[0]) + noises[t]))
+
+    for t in range(int(m0[1]), nt-1):
+        xs.append(xs[t] + dt*(rdotf(xs[t], tau, l1s[t]) + noises[t]))
+
+#    for t in range(lag, nt-1):
+#        xs.append(xs[t] + dt*(rdotf(xs[t], tau, tilt[t]) + noises[t]))
 
     return np.stack(xs,axis=1)
 
