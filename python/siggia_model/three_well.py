@@ -53,7 +53,7 @@ class ThreeWell():
 
     '''
     def __init__(self, set_param_dict = {}, unset_param_prior_type_dict = {}, unset_param_prior_scale_dict = {}, 
-            default_value_params = [], log_param_list = ['tau', 'diff', 'b1', 'b2', 'c1', 'c2'], 
+            default_value_params = [], log_param_list = ['tau', 'diff', 'a1', 'b1', 'b2', 'c1', 'c2'], 
             mode = '2d3w_S_h', rdot_depth = None, seed = None):
         
         '''
@@ -530,7 +530,7 @@ def basin_probs_1d(x, params, nstg, log_param_idxs = [], rdotf = rdot_1d2w, basi
 
     trajBasins  = basin_traj_diff_1d(
             np.repeat(x[0:6],  int(params[param_idx_dict['nper']]), axis=1), 
-            params[param_idx_dict['a0']], 
+            [params[param_idx_dict[k]] for k in ['a0','a1']], 
             [params[param_idx_dict[k]] for k in ['b0','b1','b2']], 
             params[param_idx_dict['x0']], 
             params[param_idx_dict['diff']], 
@@ -553,7 +553,9 @@ def pos_traj_1d(sts, m0, m1, x0, noises, nt, dt, tau, lag, rdotf = rdot_1d2w):
     # dt = length of timesteps (float)
     # tau = timescale (float)
     
-    l0s = np.zeros((nt, sts.shape[1])) + m0         # if positive, pushes x negative toward neural
+    #l0s = np.zeros((nt, sts.shape[1])) + m0         # if positive, pushes x negative toward neural
+    l0s = np.zeros((nt, sts.shape[1]))              # if positive, pushes x negative toward neural
+    l0s[:math.floor(m0[1])] = m0[0]         
     l1s = getSigSeriesG(sts, nt, *m1[0:3]) # nt x M # if positive, pushes x positive toward epidermal
     
     tilt = l1s - l0s
