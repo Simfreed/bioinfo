@@ -8,8 +8,8 @@ guess = {
     'nper':100,
     'lag':16,
     'diff':0.0001001,
-    'xpos':0,
-    'ypos':0,
+    'x0':0,
+    'y0':0,
     'a0':1,
     'a3':11*np.pi/6,
     'b0':20,
@@ -38,8 +38,8 @@ guess = {
     'nper':100,
     'lag':int(0.16*nt),
     'diff':0.01,
-    'xpos':0,
-    'ypos':0,
+    'x0':0,
+    'y0':0,
     'a0':0.75,
     'a3':11*np.pi/6,
     'b0':3,
@@ -69,8 +69,8 @@ guess = {
     'nper':100,
     'lag':int(0.01*nt),
     'diff':0.02,
-    'xpos':0,
-    'ypos':0,
+    'x0':0,
+    'y0':0,
     'a0':3,
     'a3':11*np.pi/6,
     'b0':6,
@@ -86,3 +86,36 @@ guess = {
 for k in log_param_list:
     guess[k] = np.log10(guess[k])
 np.save('{0}/rdot4_guess_log.npy'.format(outdir), guess) 
+
+# guess for rdot2
+ninf = -100000
+nt=1001
+guess = {
+    'nt':nt,
+    'dt':1,
+    'tau':500,
+    'nper':100,
+    'lag':int(0.16*nt),
+    'diff':0.001,
+    'x0':0.3,
+    'y0':ninf,
+    'a0':1.8,
+    'a1':400,
+    'a3':ninf,
+    'b0':3,
+    'b1':0.8*nt,
+    'b2':0.25*nt,
+    'b3':ninf,
+    'c0':ninf,
+    'c1':ninf,
+    'c2':ninf,
+    'c3':ninf,
+    'yerr':0.01
+}
+
+log_param_list = ['tau','diff','a1','b1','b2']
+for k in log_param_list:
+    guess[k] = np.log10(guess[k])
+np.save('{0}/rdot2_guess_log2.npy'.format(outdir), guess) 
+
+
