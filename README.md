@@ -1,6 +1,6 @@
 **experimental repo**
 
-Scripts for modeling for fitting a coarse grained "Waddington's Landscape" model of a developmental decisions to data.
+Scripts for modeling / fitting a coarse grained "Waddington's Landscape" model of a developmental decisions to data.
 
 The basic steps are:
 - Reduce the dimensionality of the bulk RNA-seq data via PCA
